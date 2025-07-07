@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.*
+
+# Temporary files created by our app
+temp_images/
+temp_uploads/
+
+# Data files (optional, but good practice to ignore large data)
+data/
+
+# OS-specific files
+.DS_Store
