@@ -85,33 +85,17 @@ def main():
     """Main function to run the Streamlit app."""
     initialize_app()
     
+    # --- Sidebar Layout ---
     with st.sidebar:
-        st.title("AI Office Assistant")
-        st.write("Your private, persistent document assistant.")
-        
-        # --- Confirmation logic for Reset Button ---
-        if st.session_state.get("confirming_reset", False):
-            st.warning("Are you sure? This will delete the entire knowledge base and cannot be undone.")
-            col1, col2 = st.columns(2)
-            if col1.button("✅ Yes, confirm", use_container_width=True, type="primary"):
-                reset_knowledge_base()
-                st.rerun() # Manually trigger rerun after the action
-            if col2.button("❌ Cancel", use_container_width=True):
-                st.session_state.confirming_reset = False
-                st.rerun()
-        else:
-            if st.button("Reset Knowledge Base", on_click=lambda: st.session_state.update(confirming_reset=True), use_container_width=True):
-                pass
-        
-        st.markdown("---")
-
         # --- UI for managing the knowledge base ---
         if st.session_state.get("kb_initialized"):
             # --- KB EXISTS: SHOW MANAGEMENT UI ---
-            st.info("💡 **Knowledge Base is Active**")
+            st.caption("Your private, persistent document assistant.")
+            st.markdown("### Managed Documents")
             
-            # --- Managed Documents Section ---
-            st.markdown("##### Managed Documents")
+            if not st.session_state.chat_engine.file_names:
+                st.info("Your knowledge base is empty. Add some documents below.")
+
             for file_name in st.session_state.chat_engine.file_names:
                 with st.expander(f"📄 {file_name}"):
                     language = st.text_input("Summary Language", value="English", key=f"lang_{file_name}")
@@ -125,16 +109,15 @@ def main():
                                 st.session_state.chat_history.append(AIMessage(content=summary_message))
                                 st.rerun()
                     with col2:
-                        if st.button("Delete", key=f"delete_{file_name}", use_container_width=True):
+                        if st.button("Delete", key=f"delete_{file_name}", use_container_width=True, type="primary"):
                             with st.spinner(f"Deleting {file_name} and rebuilding knowledge base..."):
                                 st.session_state.chat_engine.delete_document(file_name)
-                            # No explicit rerun here, Streamlit's loop handles it.
                             st.rerun()
             
-            st.markdown("---")
+            st.divider()
 
             # --- Add New Documents Section ---
-            st.markdown("##### Add New Documents to Knowledge Base")
+            st.markdown("### Add More Documents")
             new_uploaded_files = st.file_uploader(
                 "Upload more documents",
                 type=["pdf", "docx", "txt"],
@@ -158,8 +141,13 @@ def main():
 
         else:
             # --- NO KB: SHOW CREATE_KB_UI ---
-            st.info("ℹ️ **No Knowledge Base Found**")
-            st.markdown("Create a new knowledge base by uploading your first set of documents below.")
+            st.info(
+                """
+                **Welcome to your AI Office Assistant!**
+                
+                To get started, please upload one or more documents to create your first knowledge base.
+                """
+            )
             initial_uploaded_files = st.file_uploader(
                 "Upload your documents here", 
                 type=["pdf", "docx", "txt"],
@@ -179,9 +167,23 @@ def main():
                     st.session_state.chat_engine.create_and_save(temp_file_paths)
                 
                 shutil.rmtree(temp_dir)
-                # Manually set state and rerun to fix the UI refresh bug
                 st.session_state.kb_initialized = True
                 st.rerun()
+
+        # --- Reset Button at the very bottom ---
+        st.divider()
+        if st.session_state.get("confirming_reset", False):
+            st.error("This will delete the entire knowledge base and cannot be undone.")
+            col1, col2 = st.columns(2)
+            if col1.button("✅ Yes, Confirm", use_container_width=True, type="primary"):
+                reset_knowledge_base()
+                st.rerun()
+            if col2.button("❌ Cancel", use_container_width=True):
+                st.session_state.confirming_reset = False
+                st.rerun()
+        else:
+            if st.button("Reset Knowledge Base", on_click=lambda: st.session_state.update(confirming_reset=True), use_container_width=True):
+                pass
 
     # --- Chat Interface ---
     st.title("🤖 AI Office Assistant")
