@@ -18,12 +18,12 @@ class ChatEngine:
     It takes a file, processes it into a vector store, and can answer questions
     based on the document's content.
     """
-    def __init__(self, file_path: str, api_key: str):
+    def __init__(self, file_paths: list[str], api_key: str):
         """
-        Initializes the RAG engine.
-        1. Loads the document.
-        2. Splits it into chunks.
-        3. Creates a vector store (FAISS).
+        Initializes the RAG engine for multiple documents.
+        1. Loads and parses all documents.
+        2. Splits them into chunks with metadata.
+        3. Creates a single vector store (FAISS).
         4. Sets up a conversation retrieval chain.
         """
         if not api_key:
@@ -35,29 +35,38 @@ class ChatEngine:
         self.llm = ChatOpenAI(model="gpt-4o-mini")
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-        # 1. Load and parse the document
-        print("Parsing document...")
-        parsed_data = parse_document(file_path)
-        if "error" in parsed_data:
-            raise ValueError(f"Failed to parse document: {parsed_data['error']}")
-        
-        docs = [{"page_content": parsed_data.get("text", "")}]
-        
+        # 1. Load and parse all documents
+        print(f"Parsing {len(file_paths)} documents...")
+        all_docs = []
+        for file_path in file_paths:
+            print(f"  - Parsing: {os.path.basename(file_path)}")
+            parsed_data = parse_document(file_path)
+            if "error" in parsed_data:
+                raise ValueError(f"Failed to parse document: {parsed_data['error']}")
+            
+            # Create a document object with metadata
+            doc_content = parsed_data.get("text", "")
+            doc_metadata = {"source": os.path.basename(file_path)}
+            all_docs.append((doc_content, doc_metadata))
+
         # 2. Split documents into chunks
-        print("Splitting document into chunks...")
+        print("Splitting documents into chunks...")
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, 
             chunk_overlap=200
         )
-        split_docs = text_splitter.create_documents([d["page_content"] for d in docs])
+        
+        doc_contents = [doc[0] for doc in all_docs]
+        doc_metadatas = [doc[1] for doc in all_docs]
+        split_docs = text_splitter.create_documents(doc_contents, metadatas=doc_metadatas)
 
         # 3. Create a vector store
-        print("Creating vector store...")
+        print(f"Creating vector store from {len(split_docs)} chunks...")
         self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
 
         # 4. Create a history-aware retriever
         print("Setting up conversational chain...")
-        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 8}) # Increased k for more context
         self._setup_conversation_chain()
         print("Engine is ready.")
 
@@ -87,10 +96,12 @@ class ChatEngine:
 
         # Prompt for answering the question based on retrieved context
         qa_system_prompt = (
-            "You are an assistant for question-answering tasks. "
+            "You are an expert assistant for question-answering tasks over a collection of documents. "
             "Use the following pieces of retrieved context to answer the question. "
+            "The context provided has a `source` in its metadata, pointing to the origin document. "
             "If you don't know the answer, just say that you don't know. "
-            "Be concise and professional. Provide the answer based ONLY on the context provided."
+            "Be concise and professional. When possible, cite the source document for your answer. "
+            "Example: 'According to the document `annual_report.pdf`, the revenue was $10 million.' "
             "\n\n"
             "{context}"
         )
@@ -131,10 +142,17 @@ class ChatEngine:
 # Example usage (for testing)
 if __name__ == '__main__':
     # This is a placeholder for a file. Create a dummy file for testing.
-    dummy_file_path = "dummy_document.txt"
-    with open(dummy_file_path, "w") as f:
-        f.write("The quick brown fox jumps over the lazy dog. The CEO of the company is John Doe. The revenue in 2023 was $10 million.")
+    dummy_files_data = {
+        "report_2022.txt": "In 2022, the project Alpha was launched. The manager was Sarah Smith.",
+        "report_2023.txt": "In 2023, the project Beta was launched, and the revenue was $10 million. The manager for this project was John Doe."
+    }
     
+    dummy_file_paths = []
+    for name, content in dummy_files_data.items():
+        with open(name, "w") as f:
+            f.write(content)
+        dummy_file_paths.append(name)
+
     # Make sure to set your OPENAI_API_KEY as an environment variable
     # from dotenv import load_dotenv
     # load_dotenv()
@@ -142,24 +160,25 @@ if __name__ == '__main__':
 
     if api_key:
         print("--- Testing ChatEngine ---")
-        engine = ChatEngine(file_path=dummy_file_path, api_key=api_key)
+        engine = ChatEngine(file_paths=dummy_file_paths, api_key=api_key)
         
         history = []
         
         # First question
-        q1 = "Who is the CEO?"
+        q1 = "Who was the project manager in 2022?"
         print(f"\nUser: {q1}")
         answer1 = engine.ask(q1, history)
         print(f"AI: {answer1}")
         history.extend([HumanMessage(content=q1), AIMessage(content=answer1)])
 
-        # Follow-up question
-        q2 = "And what was the revenue?"
+        # Follow-up question that requires info from the other doc
+        q2 = "And what was the revenue in the following year?"
         print(f"\nUser: {q2}")
         answer2 = engine.ask(q2, history)
         print(f"AI: {answer2}")
 
-        # Clean up the dummy file
-        os.remove(dummy_file_path)
+        # Clean up the dummy files
+        for path in dummy_file_paths:
+            os.remove(path)
     else:
         print("Skipping test: OPENAI_API_KEY not found.") 

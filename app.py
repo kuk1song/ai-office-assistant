@@ -55,10 +55,20 @@ def initialize_session_state():
         st.session_state.chat_engine = None
     if "temp_dir" not in st.session_state:
         st.session_state.temp_dir = "temp_uploads"
-        # Ensure temp dir is clean on new session
-        if os.path.exists(st.session_state.temp_dir):
-            shutil.rmtree(st.session_state.temp_dir)
-        os.makedirs(st.session_state.temp_dir)
+    if "processed_files" not in st.session_state:
+        st.session_state.processed_files = []
+
+
+def restart_session():
+    """Clears the session state to start over."""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    
+    # Clean up the temp directory
+    temp_dir = "temp_uploads"
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+
 
 # --- Main App Logic ---
 def main():
@@ -68,36 +78,57 @@ def main():
     openai_api_key = os.getenv("OPENAI_API_KEY")
 
     with st.sidebar:
-        st.title("📄 Document Chat")
-        st.write("Upload a document and ask questions about its content.")
+        st.title("📄 Document Knowledge Base")
+        st.write("Upload a collection of documents and ask questions about their combined content.")
         
-        uploaded_file = st.file_uploader("Choose a document...", type=["pdf", "docx", "txt"])
+        st.button("Start New Session", on_click=restart_session, use_container_width=True)
+        st.markdown("---")
 
-        if uploaded_file:
-            # Check for API key
-            if not openai_api_key:
-                st.error("OPENAI_API_KEY is not set. Please add it to your .env file or environment variables.")
-                return
+        if not st.session_state.chat_engine:
+            uploaded_files = st.file_uploader(
+                "Upload your documents here", 
+                type=["pdf", "docx", "txt"],
+                accept_multiple_files=True
+            )
 
-            # Save the file and initialize the engine
-            temp_file_path = os.path.join(st.session_state.temp_dir, uploaded_file.name)
-            with open(temp_file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+            if st.button("Create Knowledge Base", use_container_width=True) and uploaded_files:
+                # Check for API key
+                if not openai_api_key:
+                    st.error("OPENAI_API_KEY is not set. Please add it to your environment.")
+                    return
 
-            with st.spinner("Analyzing document... This may take a moment."):
-                try:
-                    st.session_state.chat_engine = ChatEngine(temp_file_path, openai_api_key)
-                    st.success(f"Ready to chat with `{uploaded_file.name}`!")
-                    # Reset chat history for the new document
-                    st.session_state.chat_history = [
-                        AIMessage(content=f"I'm ready! Ask me anything about `{uploaded_file.name}`."),
-                    ]
-                except Exception as e:
-                    st.error(f"Failed to initialize the chat engine: {e}")
-                    st.session_state.chat_engine = None
+                temp_file_paths = []
+                # Ensure temp dir exists
+                if not os.path.exists(st.session_state.temp_dir):
+                    os.makedirs(st.session_state.temp_dir)
+
+                for uploaded_file in uploaded_files:
+                    temp_file_path = os.path.join(st.session_state.temp_dir, uploaded_file.name)
+                    with open(temp_file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    temp_file_paths.append(temp_file_path)
+
+                with st.spinner(f"Creating knowledge base from {len(uploaded_files)} documents..."):
+                    try:
+                        st.session_state.chat_engine = ChatEngine(temp_file_paths, openai_api_key)
+                        st.session_state.processed_files = [f.name for f in uploaded_files]
+                        
+                        file_list_str = "\n".join([f"- `{name}`" for name in st.session_state.processed_files])
+                        st.session_state.chat_history = [
+                            AIMessage(content=f"Knowledge base created successfully from:\n{file_list_str}\n\nAsk me anything!"),
+                        ]
+                        st.rerun() # Rerun to update the main view
+                    except Exception as e:
+                        st.error(f"Failed to create knowledge base: {e}")
+                        st.session_state.chat_engine = None
+        else:
+            st.success("Knowledge Base is active!")
+            st.markdown("##### Loaded Documents:")
+            for file_name in st.session_state.processed_files:
+                st.markdown(f"- `{file_name}`")
     
     # --- Chat Interface ---
-    st.title("🤖 Conversational AI Assistant")
+    st.title("🤖 Knowledge Base Assistant")
     st.write("This is an interactive chat interface. Ask me anything about your uploaded document.")
 
     # Display chat history
@@ -110,10 +141,10 @@ def main():
                 st.write(message.content)
 
     # User input
-    user_query = st.chat_input("Ask a question about your document...")
+    user_query = st.chat_input("Ask a question about your documents...")
     if user_query:
         if st.session_state.chat_engine is None:
-            st.error("Please upload a document first to start the chat.")
+            st.error("Please create a knowledge base first using the sidebar.")
             return
             
         st.session_state.chat_history.append(HumanMessage(content=user_query))
