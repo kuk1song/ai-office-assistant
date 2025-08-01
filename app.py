@@ -45,60 +45,6 @@ st.markdown("""
     .stAlert {
         text-align: center;
     }
-    
-    /* Sidebar: force full height and flex layout */
-    section[data-testid="stSidebar"] {
-        height: 100vh !important;
-    }
-    
-    section[data-testid="stSidebar"] > div {
-        height: 100vh !important;
-        display: flex !important;
-        flex-direction: column !important;
-        padding: 0 !important;
-    }
-    
-    /* Header area - fixed */
-    .sidebar-header {
-        flex-shrink: 0;
-        padding: 1rem 1rem 0.5rem 1rem;
-        background-color: #ffffff;
-    }
-    
-    /* Scrollable content area */
-    .sidebar-content {
-        flex: 1;
-        overflow-y: auto;
-        padding: 0.5rem 1rem;
-        background-color: #ffffff;
-    }
-    
-    /* Footer area - fixed at bottom */
-    .sidebar-footer {
-        flex-shrink: 0;
-        padding: 1rem;
-        background-color: #f8f9fa;
-        border-top: 1px solid #dee2e6;
-    }
-    
-    /* Custom scrollbar for content area */
-    .sidebar-content::-webkit-scrollbar {
-        width: 6px;
-    }
-    
-    .sidebar-content::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 3px;
-    }
-    
-    .sidebar-content::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 3px;
-    }
-    
-    .sidebar-content::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,14 +87,6 @@ def main():
     
     # --- Sidebar Layout ---
     with st.sidebar:
-        # Fixed header section
-        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
-        st.caption("Your private, persistent document assistant.")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Scrollable content area
-        st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
-        
         # --- UI for managing the knowledge base ---
         if st.session_state.get("kb_initialized"):
             # --- KB EXISTS: SHOW MANAGEMENT UI ---
@@ -156,29 +94,31 @@ def main():
             
             if not st.session_state.chat_engine.file_names:
                 st.info("Your knowledge base is empty. Add some documents below.")
-
-            for file_name in st.session_state.chat_engine.file_names:
-                with st.expander(f"📄 {file_name}"):
-                    language = st.text_input("Summary Language", value="English", key=f"lang_{file_name}")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("Summarize", key=f"summary_{file_name}", use_container_width=True):
-                            with st.spinner(f"Generating summary in {language}..."):
-                                summary = st.session_state.chat_engine.summarize_document.invoke({"file_name": file_name, "language": language})
-                                summary_message = f"**Summary for `{file_name}` (in {language}):**\n\n{summary}"
-                                st.session_state.chat_history.append(AIMessage(content=summary_message))
-                                st.rerun()
-                    with col2:
-                        if st.button("Delete", key=f"delete_{file_name}", use_container_width=True, type="primary"):
-                            with st.spinner(f"Deleting {file_name} and rebuilding knowledge base..."):
-                                st.session_state.chat_engine.delete_document(file_name)
+            else:
+                # Create scrollable container for documents
+                with st.container(height=200):
+                    for file_name in st.session_state.chat_engine.file_names:
+                        with st.expander(f"📄 {file_name}"):
+                            language = st.text_input("Summary Language", value="English", key=f"lang_{file_name}")
                             
-                            # Add a confirmation message to the chat
-                            st.session_state.chat_history.append(
-                                AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base.")
-                            )
-                            st.rerun()
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("Summarize", key=f"summary_{file_name}", use_container_width=True):
+                                    with st.spinner(f"Generating summary in {language}..."):
+                                        summary = st.session_state.chat_engine.summarize_document.invoke({"file_name": file_name, "language": language})
+                                        summary_message = f"**Summary for `{file_name}` (in {language}):**\n\n{summary}"
+                                        st.session_state.chat_history.append(AIMessage(content=summary_message))
+                                        st.rerun()
+                            with col2:
+                                if st.button("Delete", key=f"delete_{file_name}", use_container_width=True, type="primary"):
+                                    with st.spinner(f"Deleting {file_name} and rebuilding knowledge base..."):
+                                        st.session_state.chat_engine.delete_document(file_name)
+                                    
+                                    # Add a confirmation message to the chat
+                                    st.session_state.chat_history.append(
+                                        AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base.")
+                                    )
+                                    st.rerun()
             
             st.divider()
 
@@ -207,7 +147,7 @@ def main():
                 
                 # Add a success message to the chat
                 st.session_state.chat_history.append(
-                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about your documents!")
+                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about it!")
                 )
                 st.rerun()
 
@@ -248,11 +188,8 @@ def main():
                 )
                 st.rerun()
         
-        # Close scrollable content area
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Fixed footer section for reset button
-        st.markdown('<div class="sidebar-footer">', unsafe_allow_html=True)
+        # Reset button (naturally placed, not forced to bottom)
+        st.divider()
         if st.session_state.get("confirming_reset", False):
             st.error("This will delete the entire knowledge base and cannot be undone.")
             col1, col2 = st.columns(2)
@@ -265,7 +202,6 @@ def main():
         else:
             if st.button("Reset Knowledge Base", on_click=lambda: st.session_state.update(confirming_reset=True), use_container_width=True):
                 pass
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # --- Chat Interface ---
     st.title("🤖 AI Office Assistant")

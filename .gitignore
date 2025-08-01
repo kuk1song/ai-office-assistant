@@ -1,22 +1,51 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.pyc
-
-# Virtual Environments
+# Virtual environments
 .venv/
 venv/
-ENV/
+env/
 
 # Environment variables
 .env
-.env.*
+.env.local
+.env.production
 
-# Temporary files created by our app
+# Temporary directories
 temp_images/
 temp_uploads/
+temp_uploads_add/
+temp_uploads_create/
 
-# Data files (optional, but good practice to ignore large data)
+# Persistent storage (local data)
+persistent_storage/
+
+# Data files
 data/
 
-# OS-specific files
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# System files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
