@@ -112,6 +112,11 @@ def main():
                         if st.button("Delete", key=f"delete_{file_name}", use_container_width=True, type="primary"):
                             with st.spinner(f"Deleting {file_name} and rebuilding knowledge base..."):
                                 st.session_state.chat_engine.delete_document(file_name)
+                            
+                            # Add a confirmation message to the chat
+                            st.session_state.chat_history.append(
+                                AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base.")
+                            )
                             st.rerun()
             
             st.divider()
@@ -137,6 +142,12 @@ def main():
                     st.session_state.chat_engine.add_documents(temp_file_paths)
                 
                 shutil.rmtree(temp_dir)
+                st.session_state.kb_initialized = True
+                
+                # Add a success message to the chat
+                st.session_state.chat_history.append(
+                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about your documents!")
+                )
                 st.rerun()
 
         else:
@@ -163,11 +174,16 @@ def main():
                     with open(path, "wb") as f:
                         f.write(file.getbuffer())
 
-                with st.spinner(f"Creating knowledge base from {len(initial_uploaded_files)} document(s)..."):
+                with st.spinner(f"Creating knowledge base from {len(initial_uploaded_files)} document(s)...\n(This may take a moment for large KBs)"):
                     st.session_state.chat_engine.create_and_save(temp_file_paths)
                 
                 shutil.rmtree(temp_dir)
                 st.session_state.kb_initialized = True
+                
+                # Add a success message to the chat
+                st.session_state.chat_history.append(
+                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about it!")
+                )
                 st.rerun()
 
         # --- Reset Button at the very bottom ---
@@ -187,35 +203,33 @@ def main():
 
     # --- Chat Interface ---
     st.title("🤖 AI Office Assistant")
-    st.markdown(
-        "**Welcome!** Use the sidebar to manage your documents. "
-        "Use this main chat area for complex, open-ended questions that require cross-document analysis."
-    )
+    # st.markdown(
+    #     "**Welcome!** Use the sidebar to manage your documents. "
+    #     "Use this main chat area for complex, open-ended questions that require cross-document analysis."
+    # )
 
-    # Display chat history
-    if "chat_history" in st.session_state:
-        for message in st.session_state.chat_history:
-            if isinstance(message, AIMessage):
-                with st.chat_message("AI", avatar="🤖"):
-                    st.write(message.content)
-            elif isinstance(message, HumanMessage):
-                with st.chat_message("Human", avatar="👤"):
-                    st.write(message.content)
+    # Display chat messages
+    for message in st.session_state.chat_history:
+        if isinstance(message, AIMessage):
+            with st.chat_message("ai", avatar="🤖"):
+                st.markdown(message.content)
+        elif isinstance(message, HumanMessage):
+            with st.chat_message("user", avatar="🧑‍💻"):
+                st.markdown(message.content)
 
     # User input
-    user_query = st.chat_input("Ask a question about your documents...")
-    if user_query:
+    if prompt := st.chat_input("Ask me anything about your documents..."):
         if not st.session_state.get("kb_initialized"):
             st.error("Please create a knowledge base first using the sidebar.")
             return
             
-        st.session_state.chat_history.append(HumanMessage(content=user_query))
-        with st.chat_message("Human", avatar="👤"):
-            st.write(user_query)
+        st.session_state.chat_history.append(HumanMessage(content=prompt))
+        with st.chat_message("user", avatar="🧑‍💻"):
+            st.write(prompt)
 
         with st.chat_message("AI", avatar="🤖"):
             with st.spinner("Thinking..."):
-                response = st.session_state.chat_engine.invoke(user_query, st.session_state.chat_history)
+                response = st.session_state.chat_engine.invoke(prompt, st.session_state.chat_history)
                 st.write(response)
                 st.session_state.chat_history.append(AIMessage(content=response))
 

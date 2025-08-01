@@ -15,6 +15,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain.agents import AgentExecutor, create_openai_tools_agent
+from pydantic.v1 import BaseModel, Field
 import shutil
 
 # --- STORAGE CONFIGURATION ---
@@ -36,6 +37,23 @@ You have access to a set of tools to help you.
 When providing answers, be professional, concise, and cite the source document if possible.
 The user has uploaded the following files to the knowledge base: {file_list}
 """
+
+
+# --- Pydantic Models for Tool Inputs ---
+class DocumentInput(BaseModel):
+    file_name: str = Field(description="The exact file name of the document to process.")
+    
+class TechSpecInput(DocumentInput):
+    parameters_to_extract: List[str] = Field(description="A list of specific technical parameters to extract from the document.")
+
+class LinkBudgetInput(BaseModel):
+    distance_km: float = Field(description="The distance between the two sites in kilometers.")
+    transmitter_power_dBm: float = Field(description="The output power of the transmitter in dBm.")
+    transmitter_cable_loss_dB: float = Field(description="The cable and connector loss at the transmitter side in dB.")
+    transmitter_antenna_gain_dBi: float = Field(description="The gain of the transmitter's antenna in dBi.")
+    receiver_antenna_gain_dBi: float = Field(description="The gain of the receiver's antenna in dBi.")
+    receiver_cable_loss_dB: float = Field(description="The cable and connector loss at the receiver side in dB.")
+    frequency_MHz: float = Field(description="The operating frequency in Megahertz.")
 
 
 class AgentEngine:
@@ -62,7 +80,7 @@ class AgentEngine:
         # Ensure storage directory exists
         os.makedirs(STORAGE_DIR, exist_ok=True)
         
-        # Define tools using instance methods
+        # --- Define Tools ---
         @tool
         def knowledge_base_qa(query: str) -> str:
             """
@@ -75,7 +93,7 @@ class AgentEngine:
             response = self.rag_chain.invoke({"input": query})
             return response.get("answer", "I could not find an answer in the documents.")
 
-        @tool
+        @tool(args_schema=DocumentInput)
         def summarize_document(file_name: str, language: str = "English") -> str:
             """
             Use this tool to generate a detailed summary of a SINGLE, SPECIFIC document in a specified language.
@@ -94,8 +112,75 @@ class AgentEngine:
                 HumanMessage(content=human_prompt)
             ])
             return response.content
-        
-        self.tools = [knowledge_base_qa, summarize_document]
+
+        @tool(args_schema=TechSpecInput)
+        def extract_technical_specifications(file_name: str, parameters_to_extract: List[str]) -> Dict[str, any]:
+            """
+            Extracts specific numerical or textual technical parameters from a given document.
+            Use this to gather the necessary data before performing calculations.
+            For example, extract ['Transmitter Power (dBm)', 'Antenna Gain (dBi)'] from 'site_A_specs.pdf'.
+            """
+            if file_name not in self.raw_texts:
+                return {"error": f"The file '{file_name}' was not found. Available files: {', '.join(self.file_names)}"}
+
+            document_text = self.raw_texts[file_name]
+            
+            # Using JSON mode for structured output
+            json_llm = self.llm.bind(response_format={"type": "json_object"})
+            
+            extraction_prompt = f"""
+            Given the following document text for '{file_name}', extract the values for the following parameters:
+            {', '.join(parameters_to_extract)}
+
+            Please return the result as a JSON object where the keys are the parameter names and the values are the extracted values.
+            If a parameter is not found, its value should be null.
+            Only return the JSON object, with no other text.
+
+            Document Text:
+            ---
+            {document_text[:16000]}
+            ---
+            """
+            
+            try:
+                response = json_llm.invoke([HumanMessage(content=extraction_prompt)])
+                extracted_data = json.loads(response.content)
+                return extracted_data
+            except Exception as e:
+                return {"error": f"Failed to extract or parse data for {file_name}. Reason: {e}"}
+
+        @tool(args_schema=LinkBudgetInput)
+        def calculate_link_budget(distance_km: float, transmitter_power_dBm: float, transmitter_cable_loss_dB: float, transmitter_antenna_gain_dBi: float, receiver_antenna_gain_dBi: float, receiver_cable_loss_dB: float, frequency_MHz: float) -> Dict[str, any]:
+            """
+            Calculates the link budget for a point-to-point communication link based on provided parameters.
+            This is a pure calculation tool and does not read from documents. All parameters must be provided.
+            Returns a dictionary with all calculated values, including the final Link Margin.
+            """
+            # EIRP Calculation
+            eirp_dBm = transmitter_power_dBm - transmitter_cable_loss_dB + transmitter_antenna_gain_dBi
+            
+            # Free Space Path Loss (FSPL) Calculation
+            # FSPL (dB) = 20 * log10(d) + 20 * log10(f) + 20 * log10(4π/c)
+            # 20 * log10(4π/c) where f is in MHz and d is in km is approx -27.55
+            fspl_dB = 20 * __import__('math').log10(distance_km) + 20 * __import__('math').log10(frequency_MHz) + 27.55
+            
+            # Received Power Calculation
+            received_power_dBm = eirp_dBm - fspl_dB + receiver_antenna_gain_dBi - receiver_cable_loss_dB
+            
+            return {
+                "Effective Isotropic Radiated Power (EIRP) dBm": round(eirp_dBm, 2),
+                "Free Space Path Loss (FSPL) dB": round(fspl_dB, 2),
+                "Calculated Received Power dBm": round(received_power_dBm, 2)
+                # Note: True Link Margin requires Receiver Sensitivity, which the user must provide for the final comparison.
+                # The agent will need to compare this received power with the sensitivity.
+            }
+
+        self.tools = [
+            knowledge_base_qa,
+            summarize_document,
+            extract_technical_specifications,
+            calculate_link_budget
+        ]
         # Expose summary tool for direct calls from UI
         self.summarize_document = summarize_document
 
