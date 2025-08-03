@@ -8,7 +8,7 @@ import streamlit as st
 import os
 import shutil
 from langchain_core.messages import AIMessage
-from .rag_engine import AgentEngine, STORAGE_DIR
+from .engine import AgentEngine, STORAGE_DIR
 
 def initialize_app():
     """Initializes the engine and session state. Ensures UI updates correctly."""

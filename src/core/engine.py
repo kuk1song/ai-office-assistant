@@ -4,7 +4,7 @@ This module contains the core Retrieval-Augmented Generation (RAG) engine.
 import os
 import json
 from typing import List, Dict
-from .document_parser import parse_document
+from .parser import DocumentParser
 
 from langchain.tools import tool
 from langchain_community.vectorstores import FAISS
@@ -336,13 +336,13 @@ Question: {input}
             file_name = os.path.basename(file_path)
             print(f"  - Processing: {file_name}")
             try:
-                parsed_data = parse_document(file_path)
+                parsed_data = DocumentParser.parse_document(file_path)
                 if "error" in parsed_data:
                     print(f"  - Failed to parse {file_name}: {parsed_data['error']}")
                     failed_files.append(file_name)
                     continue
                 
-                text = parsed_data.get("text", "").strip()
+                text = parsed_data.get("content", "").strip()
                 
                 # Check if the document has any readable content
                 # Also check for OCR failure indicators
@@ -443,11 +443,11 @@ Question: {input}
                 continue
                 
             print(f"  - Processing: {file_name}")
-            parsed_data = parse_document(file_path)
+            parsed_data = DocumentParser.parse_document(file_path)
             if "error" in parsed_data:
                 raise ValueError(f"Failed to parse {file_name}: {parsed_data['error']}")
             
-            text = parsed_data.get("text", "")
+            text = parsed_data.get("content", "")
             self.raw_texts[file_name] = text
             self.file_names.append(file_name)
             docs_for_rag.append((text, {"source": file_name}))
