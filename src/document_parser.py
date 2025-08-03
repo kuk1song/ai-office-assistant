@@ -36,14 +36,38 @@ def parse_document(file_path: str) -> Dict[str, Union[str, List[str]]]:
         return {"error": f"Unsupported file format '{file_extension}'. Please provide a .pdf, .docx, or .txt file."}
 
 def _extract_text_from_image(image_path: str) -> str:
-    """Extract text from an image using OCR."""
+    """Extract text from an image using OCR with enhanced configuration."""
     if not OCR_AVAILABLE:
         return ""
     
     try:
         image = Image.open(image_path)
-        text = pytesseract.image_to_string(image)
-        return text.strip()
+        
+        # Try multiple OCR configurations for better accuracy
+        configs = [
+            '',  # Default configuration
+            '--psm 6',  # Single uniform block of text
+            '--psm 4',  # Single column of text of variable sizes
+            '--psm 3',  # Fully automatic page segmentation
+        ]
+        
+        for config in configs:
+            try:
+                text = pytesseract.image_to_string(image, config=config)
+                text = text.strip()
+                
+                # If we got meaningful text (more than just whitespace/special chars)
+                if text and len(text) > 10 and any(c.isalnum() for c in text):
+                    print(f"OCR successful with config: '{config}' for {os.path.basename(image_path)}")
+                    return text
+            except Exception as e:
+                print(f"OCR config '{config}' failed for {image_path}: {e}")
+                continue
+        
+        # If all configurations failed
+        print(f"Warning: All OCR configurations failed for {image_path}")
+        return ""
+        
     except Exception as e:
         print(f"Warning: Could not extract text from {image_path}. Reason: {e}")
         return ""
@@ -107,6 +131,7 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
         if not text.strip() and image_paths:
             print("No text found in PDF, attempting OCR on images...")
             ocr_text = ""
+            successful_extractions = 0
             
             if OCR_AVAILABLE:
                 for image_path in image_paths:
@@ -114,13 +139,15 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
                     if extracted_text:
                         ocr_text += f"\n\n--- Text from {os.path.basename(image_path)} ---\n"
                         ocr_text += extracted_text + "\n"
+                        successful_extractions += 1
                 
-                if ocr_text.strip():
+                # Check if we got meaningful OCR results
+                if ocr_text.strip() and len(ocr_text.strip()) > 20:
                     text = "=== Text extracted from images using OCR ===\n" + ocr_text
-                    print(f"Successfully extracted text from {len(image_paths)} image(s) using OCR.")
+                    print(f"Successfully extracted text from {successful_extractions}/{len(image_paths)} image(s) using OCR.")
                 else:
                     text = "=== Document contains only images with no readable text ==="
-                    print("OCR did not find any readable text in the images.")
+                    print(f"OCR processed {len(image_paths)} images but found no readable text.")
             else:
                 text = "=== Document contains only images (OCR not available) ==="
                 print("Document contains only images, but OCR libraries are not installed.")

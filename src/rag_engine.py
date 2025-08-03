@@ -269,8 +269,9 @@ Question: {input}
                 text = parsed_data.get("text", "").strip()
                 
                 # Check if the document has any readable content
-                if not text:
-                    print(f"  - {file_name} contains no readable text (may be image-only)")
+                # Also check for OCR failure indicators
+                if not text or text.startswith("=== Document contains only images with no readable text ==="):
+                    print(f"  - {file_name} contains no readable text (may be image-only or OCR failed)")
                     failed_files.append(file_name)
                     continue
                     
