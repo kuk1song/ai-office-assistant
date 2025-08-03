@@ -520,3 +520,101 @@ print(f"Using chunk_size={chunk_size}, overlap={overlap} for {len(docs_for_rag)}
 ---
 
 *最后更新: 2025年1月* | *记录错误总数: 17* | *解决率: 100%* 
+
+## Error #12: 删除最后一个文档后无法重新上传问题
+
+### 📅 Date: 2025年1月
+### 🏷️ Category: 状态管理/UI同步
+
+### 🐛 **Problem Description**
+- **症状**: 当逐个删除所有文档直到知识库为空后，无法重新上传和处理任何文档
+- **影响范围**: 文档删除功能和重新上传流程
+- **复现条件**: 
+  1. 上传多个文档创建知识库
+  2. 逐个删除所有文档
+  3. 尝试重新上传文档
+  4. 文档处理失败
+
+### 🔍 **Root Cause Analysis**
+1. **状态同步缺陷**: `AgentEngine.delete_document()` 正确清空了引擎状态，但 `st.session_state.kb_initialized` 没有同步更新
+2. **UI判断逻辑不一致**: `is_kb_initialized()` 只检查session state，未验证引擎实际状态
+3. **状态不匹配**: Session state显示"已初始化"，但引擎实际为空，导致UI显示错误界面
+
+### ⚙️ **Technical Details**
+```python
+# 问题代码
+def delete_document(self, file_name_to_delete: str):
+    # ... 删除逻辑 ...
+    if not self.file_names:
+        # 引擎状态正确清空
+        self.vectorstore = None
+        self.rag_chain = None
+        self.agent_executor = None
+        # 但是 st.session_state.kb_initialized 没有更新！
+
+# UI判断逻辑不完整
+def is_kb_initialized():
+    return st.session_state.get("kb_initialized", False)  # 只检查session state
+```
+
+### 🔧 **Solution Implemented**
+
+#### **1. 修复删除时的状态同步**
+```python
+# 在 src/ui_components.py 中
+if st.button("Delete", ...):
+    chat_engine.delete_document(file_name)
+    
+    # 新增：检查知识库是否为空并同步状态
+    if not chat_engine.file_names:
+        st.session_state.kb_initialized = False
+        chat_history.append(AIMessage(content=f"🗑️ The document **{file_name}** has been deleted. The knowledge base is now empty."))
+    else:
+        chat_history.append(AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base."))
+```
+
+#### **2. 增强状态检查逻辑**
+```python
+# 在 src/session_manager.py 中
+def is_kb_initialized():
+    """Check if knowledge base is initialized with double verification."""
+    session_initialized = st.session_state.get("kb_initialized", False)
+    chat_engine = st.session_state.get("chat_engine")
+    
+    # 双重验证：session说已初始化但引擎无文件
+    if session_initialized and chat_engine and not chat_engine.file_names:
+        st.session_state.kb_initialized = False
+        return False
+    
+    # 双重验证：session说未初始化但引擎有文件
+    if not session_initialized and chat_engine and chat_engine.file_names:
+        st.session_state.kb_initialized = True
+        return True
+    
+    return session_initialized
+```
+
+### ✅ **Prevention Measures**
+1. **状态同步机制**: 任何修改引擎状态的操作都同步更新session state
+2. **双重验证**: 状态检查函数验证session state和引擎实际状态的一致性
+3. **用户反馈**: 提供明确的删除确认信息，区分"删除文档"和"清空知识库"
+4. **自动修复**: 检测到状态不一致时自动修正
+
+### 📊 **Impact Assessment**
+- **Before**: 删除所有文档后系统进入不可用状态，需要手动reset
+- **After**: 删除操作后系统状态正确同步，可以立即重新上传文档
+- **User Experience**: 消除了需要手动reset的困扰，操作流程更加顺畅
+
+### 🔄 **Testing Scenarios**
+1. **单文档删除**: ✅ 删除单个文档后仍可正常使用
+2. **全部删除**: ✅ 删除所有文档后正确显示初始上传界面
+3. **重新上传**: ✅ 空知识库状态下可以正常重新上传文档
+4. **状态一致性**: ✅ Session state与引擎状态始终保持同步
+
+### 🏗️ **Architecture Improvement**
+这个修复引入了**状态同步机制**的概念：
+- **Single Source of Truth**: 引擎状态作为真实状态源
+- **Reactive UI**: UI状态响应引擎状态变化
+- **自动修复**: 检测不一致并自动同步
+
+--- 

@@ -83,10 +83,17 @@ def render_document_expander(file_name: str, chat_engine, chat_history: list) ->
                 with st.spinner(f"Deleting {file_name} and rebuilding knowledge base..."):
                     chat_engine.delete_document(file_name)
                 
-                # Add confirmation message to chat
-                chat_history.append(
-                    AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base.")
-                )
+                # Check if knowledge base is now empty and update session state
+                if not chat_engine.file_names:
+                    st.session_state.kb_initialized = False
+                    chat_history.append(
+                        AIMessage(content=f"🗑️ The document **{file_name}** has been deleted. The knowledge base is now empty.")
+                    )
+                else:
+                    chat_history.append(
+                        AIMessage(content=f"🗑️ The document **{file_name}** has been successfully deleted from the knowledge base.")
+                    )
+                
                 st.rerun()
                 return True
     return False

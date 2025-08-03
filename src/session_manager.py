@@ -57,4 +57,19 @@ def get_chat_history():
 
 def is_kb_initialized():
     """Check if knowledge base is initialized."""
-    return st.session_state.get("kb_initialized", False) 
+    session_initialized = st.session_state.get("kb_initialized", False)
+    chat_engine = st.session_state.get("chat_engine")
+    
+    # Double check: session state says initialized but engine has no files
+    if session_initialized and chat_engine and not chat_engine.file_names:
+        # Sync session state with actual engine state
+        st.session_state.kb_initialized = False
+        return False
+    
+    # Double check: session state says not initialized but engine has files
+    if not session_initialized and chat_engine and chat_engine.file_names:
+        # Sync session state with actual engine state
+        st.session_state.kb_initialized = True
+        return True
+    
+    return session_initialized 
