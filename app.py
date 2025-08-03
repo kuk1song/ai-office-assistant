@@ -94,10 +94,10 @@ def main():
             if not st.session_state.chat_engine.file_names:
                 st.info("Your knowledge base is empty. Add some documents below.")
             else:
-                # Create scrollable container that shows exactly 2 files
-                # Calculate height: show max 2 files, each file takes roughly 80-100px
+                # Create scrollable container that shows exactly 4 files
+                # Calculate height: show max 4 files, each file takes roughly 80-100px
                 num_files = len(st.session_state.chat_engine.file_names)
-                container_height = min(num_files, 2) * 90  # 90px per file, max 2 files visible
+                container_height = min(num_files, 4) * 90  # 90px per file, max 4 files visible
                 
                 with st.container(height=container_height):
                     for file_name in st.session_state.chat_engine.file_names:
