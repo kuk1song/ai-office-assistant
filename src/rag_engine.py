@@ -253,18 +253,42 @@ Question: {input}
         """
         print("Creating new knowledge base...")
         docs_for_rag = []
+        successful_files = []
+        failed_files = []
+        
         for file_path in file_paths:
             file_name = os.path.basename(file_path)
             print(f"  - Processing: {file_name}")
-            parsed_data = parse_document(file_path)
-            if "error" in parsed_data:
-                raise ValueError(f"Failed to parse {file_name}: {parsed_data['error']}")
-            
-            text = parsed_data.get("text", "")
-            self.raw_texts[file_name] = text
-            docs_for_rag.append((text, {"source": file_name}))
+            try:
+                parsed_data = parse_document(file_path)
+                if "error" in parsed_data:
+                    print(f"  - Failed to parse {file_name}: {parsed_data['error']}")
+                    failed_files.append(file_name)
+                    continue
+                
+                text = parsed_data.get("text", "").strip()
+                
+                # Check if the document has any readable content
+                if not text:
+                    print(f"  - {file_name} contains no readable text (may be image-only)")
+                    failed_files.append(file_name)
+                    continue
+                    
+                self.raw_texts[file_name] = text
+                docs_for_rag.append((text, {"source": file_name}))
+                successful_files.append(file_name)
+                
+            except Exception as e:
+                print(f"  - Error processing {file_name}: {e}")
+                failed_files.append(file_name)
         
-        self.file_names = [os.path.basename(p) for p in file_paths]
+        if not docs_for_rag:
+            error_msg = "No readable content found in any of the uploaded documents."
+            if failed_files:
+                error_msg += f" Failed files: {', '.join(failed_files)}"
+            raise ValueError(error_msg)
+        
+        self.file_names = successful_files
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.create_documents(
@@ -272,10 +296,21 @@ Question: {input}
             metadatas=[doc[1] for doc in docs_for_rag]
         )
         
-        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
-        self._build_rag_chain()
-        self._build_agent()
-        self._save_to_disk()
+        if not split_docs:
+            raise ValueError("No content could be processed from the documents.")
+        
+        try:
+            self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
+            self._build_rag_chain()
+            self._build_agent()
+            self._save_to_disk()
+            
+            print(f"Successfully created knowledge base with {len(successful_files)} document(s).")
+            if failed_files:
+                print(f"Warning: {len(failed_files)} file(s) could not be processed: {', '.join(failed_files)}")
+                
+        except Exception as e:
+            raise ValueError(f"Failed to create knowledge base: {str(e)}")
 
     def delete_document(self, file_name_to_delete: str):
         """

@@ -16,6 +16,10 @@ faiss-cpu==1.11.0
 PyMuPDF==1.26.3
 python-docx==1.2.0
 
+# OCR and image processing (optional for image-only PDFs)
+pytesseract==0.3.13
+Pillow==11.0.0
+
 # Utilities
 python-dotenv==1.0.1
 pydantic==2.10.6

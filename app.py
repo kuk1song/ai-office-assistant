@@ -285,8 +285,21 @@ def main():
                                 AIMessage(content=f"✅ Knowledge Base created successfully with: {file_list}")
                             )
                             
+                        except ValueError as ve:
+                            # Handle specific errors from create_and_save
+                            error_message = str(ve)
+                            if "No readable content found" in error_message:
+                                st.error("❌ Unable to create knowledge base: The uploaded files contain no readable text. This often happens with:")
+                                st.error("• Image-only PDFs (we don't yet support OCR)")
+                                st.error("• Empty or corrupted files") 
+                                st.error("• Files in unsupported formats")
+                            elif "Failed files:" in error_message:
+                                st.error("❌ Knowledge base creation failed:")
+                                st.error(error_message)
+                            else:
+                                st.error(f"❌ Failed to create knowledge base: {error_message}")
                         except Exception as e:
-                            st.error("❌ Failed to create knowledge base. Some files may be empty, corrupted, or in an unsupported format.")
+                            st.error("❌ An unexpected error occurred while creating the knowledge base. Please try again.")
                     else:
                         st.error("❌ No valid files could be processed.")
                     

@@ -4,6 +4,14 @@ import os
 import shutil
 from typing import Dict, List, Union
 
+# Try to import OCR libraries (optional dependency)
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+
 def parse_document(file_path: str) -> Dict[str, Union[str, List[str]]]:
     """
     Parses a document (PDF, DOCX, TXT) and extracts its text and images.
@@ -27,6 +35,19 @@ def parse_document(file_path: str) -> Dict[str, Union[str, List[str]]]:
     else:
         return {"error": f"Unsupported file format '{file_extension}'. Please provide a .pdf, .docx, or .txt file."}
 
+def _extract_text_from_image(image_path: str) -> str:
+    """Extract text from an image using OCR."""
+    if not OCR_AVAILABLE:
+        return ""
+    
+    try:
+        image = Image.open(image_path)
+        text = pytesseract.image_to_string(image)
+        return text.strip()
+    except Exception as e:
+        print(f"Warning: Could not extract text from {image_path}. Reason: {e}")
+        return ""
+
 def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
     """Extracts text and images from a PDF file."""
     temp_dir = "temp_images"
@@ -38,10 +59,10 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
     image_paths = []
     try:
         doc = fitz.open(file_path)
-        text = ""
         for page_num, page in enumerate(doc):
             # Extract text
-            text += page.get_text() + "\n\n"
+            page_text = page.get_text()
+            text += page_text + "\n\n"
 
             # Extract tables
             tables = page.find_tables()
@@ -50,9 +71,8 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
                     try:
                         table_data = table.extract()
                         if table_data:
-                            # Convert table to Markdown format
                             markdown_table = "### Table Data\n\n"
-                            if len(table_data) > 1: # Check for header and content
+                            if len(table_data) > 1:
                                 header = table_data[0]
                                 markdown_table += "| " + " | ".join(map(str, header)) + " |\n"
                                 markdown_table += "| " + " | ".join(["---"] * len(header)) + " |\n"
@@ -82,6 +102,29 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
                 image_paths.append(image_path)
                 
         doc.close()
+        
+        # If no text was found but images exist, try OCR
+        if not text.strip() and image_paths:
+            print("No text found in PDF, attempting OCR on images...")
+            ocr_text = ""
+            
+            if OCR_AVAILABLE:
+                for image_path in image_paths:
+                    extracted_text = _extract_text_from_image(image_path)
+                    if extracted_text:
+                        ocr_text += f"\n\n--- Text from {os.path.basename(image_path)} ---\n"
+                        ocr_text += extracted_text + "\n"
+                
+                if ocr_text.strip():
+                    text = "=== Text extracted from images using OCR ===\n" + ocr_text
+                    print(f"Successfully extracted text from {len(image_paths)} image(s) using OCR.")
+                else:
+                    text = "=== Document contains only images with no readable text ==="
+                    print("OCR did not find any readable text in the images.")
+            else:
+                text = "=== Document contains only images (OCR not available) ==="
+                print("Document contains only images, but OCR libraries are not installed.")
+        
         return {"text": text, "image_paths": image_paths}
     except Exception as e:
         return {"error": f"Failed to parse PDF file at {file_path}. Reason: {e}"}
