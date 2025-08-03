@@ -51,17 +51,51 @@ graph TD
     J --> K[用户回答]
 ```
 
-### 3. 技术栈
+## 🛠️ **技术栈**
 
-| 组件 | 技术选择 | 版本 | 作用 |
-|------|---------|------|------|
-| **前端框架** | Streamlit | 1.46.1 | Web UI构建 |
-| **LLM** | OpenAI GPT-4o-mini | - | 核心AI能力 |
-| **向量数据库** | FAISS | 1.11.0 | 本地向量存储 |
-| **文档解析** | PyMuPDF + python-docx | 1.26.3 + 1.2.0 | PDF/DOCX处理 |
-| **OCR引擎** | pytesseract + Pillow | 0.3.13 + 11.0.0 | 图像文字识别 |
-| **AI框架** | LangChain | 0.3.26 | Agent构建 |
-| **嵌入模型** | text-embedding-3-small | - | 文本向量化 |
+### **核心框架**
+- **Frontend**: Streamlit 1.46.1 (Web UI)
+- **Backend**: Python 3.10.16 + Virtual Environment (.venv)
+- **AI Framework**: LangChain 0.3.26 (Agent orchestration)
+- **LLM**: OpenAI GPT-4o-mini (Text generation & reasoning)
+- **Embeddings**: OpenAI text-embedding-3-small (Vector embeddings)
+
+### **文档处理栈**
+- **PDF Processing**: PyMuPDF 1.26.3 (Text, tables, images)
+- **DOCX Processing**: python-docx 1.2.0 (Text, tables, images)
+- **OCR Engine**: Tesseract 5.5.1 + pytesseract 0.3.13
+  - **Multi-config OCR**: 4种不同配置自动重试
+  - **Quality validation**: 文本长度和字符类型检查
+  - **Fallback handling**: 智能错误处理和用户反馈
+  - **Clean text extraction**: 简化OCR输出格式，减少不必要的分隔符
+- **Image Processing**: Pillow 11.0.0 (Image manipulation)
+
+### **向量数据库**
+- **Vector Store**: FAISS 1.11.0 (Local vector storage)
+- **Persistence**: File-based storage in `persistent_storage/`
+- **Smart Chunking**: 自适应分块策略
+  - **Small files** (<500 chars): 动态调整到内容的80%
+  - **Medium files** (500-2000 chars): chunk_size=500
+  - **Large files** (>2000 chars): chunk_size=1000
+  - **OCR-aware**: 正确识别OCR内容的实际长度
+- **Quality Control**: 过滤无意义的空chunks
+
+### **Agent Architecture**
+- **Agent Type**: OpenAI Tools Agent with custom tools
+- **Tools Available**:
+  - `knowledge_base_qa`: RAG-based Q&A
+  - `summarize_document`: Multi-language summarization
+  - `extract_technical_specifications`: Structured data extraction
+  - `calculate_link_budget`: Communication engineering calculations
+
+### **开发环境**
+- **Dependency Management**: requirements.txt (16 core packages)
+- **Virtual Environment**: Python venv (.venv/) for isolation
+- **Version Control**: Git + GitHub
+- **Development Tools**: 
+  - Code structure: Modular architecture (5 main modules)
+  - Error handling: Comprehensive try-catch with user-friendly messages
+  - Logging: Detailed console output for debugging
 
 ## 🚀 当前功能特性
 

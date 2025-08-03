@@ -191,6 +191,82 @@ class AgentEngine:
         # Expose summary tool for direct calls from UI
         self.summarize_document = summarize_document
 
+    def _get_text_splitter(self, docs_for_rag: List = None):
+        """
+        Creates an optimal text splitter based on document characteristics.
+        """
+        if not docs_for_rag:
+            # Default configuration for unknown content
+            return RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            
+        # Smart text splitting based on content size
+        # For OCR content, extract the actual text without the prefix
+        actual_texts = []
+        for i, doc in enumerate(docs_for_rag):
+            text = doc[0] if isinstance(doc, tuple) else doc
+            
+            print(f"  - Document {i+1}: Total length = {len(text)} chars")
+            
+            # Remove OCR prefix for length calculation
+            if text.startswith("=== Text extracted from images using OCR ===\n"):
+                actual_text = text.replace("=== Text extracted from images using OCR ===\n", "")
+                actual_texts.append(actual_text)
+                print(f"    OCR document: Prefix removed, actual length = {len(actual_text)} chars")
+            else:
+                actual_texts.append(text)
+                print(f"    Regular document: Using full length = {len(text)} chars")
+        
+        total_text_length = sum(len(text) for text in actual_texts)
+        avg_text_length = total_text_length / len(actual_texts) if actual_texts else 0
+        
+        print(f"  - Total actual text length: {total_text_length}")
+        print(f"  - Average text length: {int(avg_text_length)}")
+        
+        # Adjust chunk size based on document size
+        if avg_text_length < 200:
+            # Very tiny documents - don't chunk, use as single piece
+            chunk_size = max(avg_text_length, 50)  # Minimum 50 chars for FAISS
+            overlap = 0
+            print(f"  - Strategy: TINY documents (< 200 chars) - minimal chunking")
+        elif avg_text_length < 500:
+            # Small documents - use smaller chunks
+            chunk_size = max(200, int(avg_text_length * 0.8))
+            overlap = min(50, chunk_size // 4)
+            print(f"  - Strategy: SMALL documents (200-500 chars)")
+        elif avg_text_length < 2000:
+            # Medium documents
+            chunk_size = 500
+            overlap = 100
+            print(f"  - Strategy: MEDIUM documents (500-2000 chars)")
+        else:
+            # Large documents - use default settings
+            chunk_size = 1000
+            overlap = 200
+            print(f"  - Strategy: LARGE documents (> 2000 chars)")
+            
+        print(f"Using chunk_size={chunk_size}, overlap={overlap} for {len(docs_for_rag)} document(s) (avg_length={int(avg_text_length)})")
+        return RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
+        
+    def _create_valid_chunks(self, text_splitter, docs_for_rag):
+        """
+        Creates and validates document chunks, filtering out empty or meaningless ones.
+        """
+        split_docs = text_splitter.create_documents(
+            [doc[0] for doc in docs_for_rag],
+            metadatas=[doc[1] for doc in docs_for_rag]
+        )
+        
+        # Ensure we have meaningful chunks
+        valid_chunks = [doc for doc in split_docs if len(doc.page_content.strip()) > 10]
+        
+        if not valid_chunks:
+            raise ValueError("No meaningful content chunks could be created from the documents.")
+        
+        if len(valid_chunks) < len(split_docs):
+            print(f"Filtered out {len(split_docs) - len(valid_chunks)} empty or very small chunks")
+            
+        return valid_chunks
+
     def _build_agent(self):
         """Builds or rebuilds the agent executor with the current file list."""
         print("Rebuilding agent with updated file list...")
@@ -291,14 +367,9 @@ Question: {input}
         
         self.file_names = successful_files
         
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        split_docs = text_splitter.create_documents(
-            [doc[0] for doc in docs_for_rag],
-            metadatas=[doc[1] for doc in docs_for_rag]
-        )
-        
-        if not split_docs:
-            raise ValueError("No content could be processed from the documents.")
+        # Create optimized text splitter and chunks
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
         
         try:
             self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
@@ -306,7 +377,7 @@ Question: {input}
             self._build_agent()
             self._save_to_disk()
             
-            print(f"Successfully created knowledge base with {len(successful_files)} document(s).")
+            print(f"Successfully created knowledge base with {len(successful_files)} document(s) and {len(split_docs)} chunks.")
             if failed_files:
                 print(f"Warning: {len(failed_files)} file(s) could not be processed: {', '.join(failed_files)}")
                 
@@ -347,11 +418,8 @@ Question: {input}
             if text:
                 docs_for_rag.append((text, {"source": file_name}))
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        split_docs = text_splitter.create_documents(
-            [doc[0] for doc in docs_for_rag],
-            metadatas=[doc[1] for doc in docs_for_rag]
-        )
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
         
         self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
         self._build_rag_chain()
@@ -388,27 +456,16 @@ Question: {input}
             print("No new documents to add.")
             return
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        split_docs = text_splitter.create_documents(
-            [doc[0] for doc in docs_for_rag],
-            metadatas=[doc[1] for doc in docs_for_rag]
-        )
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
         
-        # Add new documents to the existing vector store, only if there are valid chunks
-        if split_docs and len(split_docs) > 0:
-            try:
-                self.vectorstore.add_documents(split_docs)
-                print(f"Successfully added {len(split_docs)} document chunks to the vector store.")
-            except Exception as e:
-                print(f"Error adding documents to vector store: {e}")
-                # If vector store addition fails, we still want to keep the metadata
-                # but we should raise an exception so the UI can handle it gracefully
-                raise ValueError("Failed to process documents. They may be empty, corrupted, or in an unsupported format.")
-        else:
-            print("No document chunks to add. The files may be empty or contain only images.")
-            # Even if no chunks, we might still want to keep the file names for tracking
-            # But raise an error so the UI knows something went wrong
-            raise ValueError("No readable content found in the uploaded documents.")
+        # Add new documents to the existing vector store
+        try:
+            self.vectorstore.add_documents(split_docs)
+            print(f"Successfully added {len(split_docs)} document chunks to the vector store.")
+        except Exception as e:
+            print(f"Error adding documents to vector store: {e}")
+            raise ValueError("Failed to process documents. They may be empty, corrupted, or in an unsupported format.")
         
         # Rebuild agent with updated file list and save everything
         self._build_rag_chain()

@@ -289,15 +289,24 @@ def create_knowledge_base_handler(chat_engine, chat_history: list):
                     # Handle specific errors from create_and_save
                     error_message = str(ve)
                     if "No readable content found" in error_message:
-                        st.error("❌ Unable to create knowledge base: The uploaded files contain no readable text. This often happens with:")
-                        st.error("• Image-only PDFs (we don't yet support OCR)")
+                        st.error("❌ Unable to create knowledge base: The uploaded files contain no readable text.")
+                        st.error("Possible causes:")
+                        st.error("• Image-only PDFs with poor quality images that OCR cannot process")
                         st.error("• Empty or corrupted files") 
                         st.error("• Files in unsupported formats")
-                    elif "Failed files:" in error_message:
-                        st.error("❌ Knowledge base creation failed:")
-                        st.error(error_message)
+                        st.error("• Very small files with insufficient content")
+                        
+                        # Show which files failed if available
+                        if "Failed files:" in error_message:
+                            failed_part = error_message.split("Failed files:")[1].strip()
+                            st.error(f"• Failed files: {failed_part}")
                     else:
                         st.error(f"❌ Failed to create knowledge base: {error_message}")
+                        
+                    # Add chat message for failed creation
+                    chat_history.append(
+                        AIMessage(content=f"❌ Failed to create knowledge base: {error_message}")
+                    )
                 except Exception as e:
                     st.error("❌ An unexpected error occurred while creating the knowledge base. Please try again.")
             else:

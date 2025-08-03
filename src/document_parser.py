@@ -130,20 +130,22 @@ def _parse_pdf(file_path: str) -> Dict[str, Union[str, List[str]]]:
         # If no text was found but images exist, try OCR
         if not text.strip() and image_paths:
             print("No text found in PDF, attempting OCR on images...")
-            ocr_text = ""
+            ocr_texts = []
             successful_extractions = 0
             
             if OCR_AVAILABLE:
                 for image_path in image_paths:
                     extracted_text = _extract_text_from_image(image_path)
                     if extracted_text:
-                        ocr_text += f"\n\n--- Text from {os.path.basename(image_path)} ---\n"
-                        ocr_text += extracted_text + "\n"
+                        # Just add the raw text without extra formatting
+                        ocr_texts.append(extracted_text)
                         successful_extractions += 1
                 
                 # Check if we got meaningful OCR results
-                if ocr_text.strip() and len(ocr_text.strip()) > 20:
-                    text = "=== Text extracted from images using OCR ===\n" + ocr_text
+                if ocr_texts:
+                    # Join texts with simple newlines, no extra formatting
+                    clean_ocr_text = "\n\n".join(ocr_texts)
+                    text = "=== Text extracted from images using OCR ===\n" + clean_ocr_text
                     print(f"Successfully extracted text from {successful_extractions}/{len(image_paths)} image(s) using OCR.")
                 else:
                     text = "=== Document contains only images with no readable text ==="
