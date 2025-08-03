@@ -89,7 +89,7 @@ def main():
         # --- UI for managing the knowledge base ---
         if st.session_state.get("kb_initialized"):
             # --- KB EXISTS: SHOW MANAGEMENT UI ---
-            st.markdown("### Managed Documents (Indexed)")
+            st.markdown("### Knowledge Base")
             
             if not st.session_state.chat_engine.file_names:
                 st.info("Your knowledge base is empty. Add some documents below.")
@@ -97,7 +97,7 @@ def main():
                 # Create scrollable container that shows exactly 4 files
                 # Calculate height: show max 4 files, each file takes roughly 80-100px
                 num_files = len(st.session_state.chat_engine.file_names)
-                container_height = min(num_files, 4) * 90  # 90px per file, max 4 files visible
+                container_height = min(num_files, 4) * 95  # 95px per file, max 4 files visible
                 
                 with st.container(height=container_height):
                     for file_name in st.session_state.chat_engine.file_names:
