@@ -358,8 +358,21 @@ Question: {input}
             metadatas=[doc[1] for doc in docs_for_rag]
         )
         
-        # Add new documents to the existing vector store
-        self.vectorstore.add_documents(split_docs)
+        # Add new documents to the existing vector store, only if there are valid chunks
+        if split_docs and len(split_docs) > 0:
+            try:
+                self.vectorstore.add_documents(split_docs)
+                print(f"Successfully added {len(split_docs)} document chunks to the vector store.")
+            except Exception as e:
+                print(f"Error adding documents to vector store: {e}")
+                # If vector store addition fails, we still want to keep the metadata
+                # but we should raise an exception so the UI can handle it gracefully
+                raise ValueError("Failed to process documents. They may be empty, corrupted, or in an unsupported format.")
+        else:
+            print("No document chunks to add. The files may be empty or contain only images.")
+            # Even if no chunks, we might still want to keep the file names for tracking
+            # But raise an error so the UI knows something went wrong
+            raise ValueError("No readable content found in the uploaded documents.")
         
         # Rebuild agent with updated file list and save everything
         self._build_rag_chain()

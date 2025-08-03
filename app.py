@@ -127,32 +127,99 @@ def main():
 
             # --- Add New Documents Section ---
             st.markdown("### Add More Documents")
+            
+            # Use a dynamic key to force recreation of file uploader when needed
+            if "uploader_key" not in st.session_state:
+                st.session_state.uploader_key = 0
+                
             new_uploaded_files = st.file_uploader(
                 "Upload more documents",
                 type=["pdf", "docx", "txt"],
                 accept_multiple_files=True,
-                key="new_files_uploader",
+                key=f"new_files_uploader_{st.session_state.uploader_key}",
                 label_visibility="collapsed"
             )
-            if st.button("Add to Knowledge Base", use_container_width=True, disabled=not new_uploaded_files):
-                temp_dir = "temp_uploads_add"
-                if not os.path.exists(temp_dir): os.makedirs(temp_dir)
-                temp_file_paths = [os.path.join(temp_dir, f.name) for f in new_uploaded_files]
-                for file, path in zip(new_uploaded_files, temp_file_paths):
-                    with open(path, "wb") as f:
-                        f.write(file.getbuffer())
+            
+            def handle_add_documents():
+                """Handle adding new documents with comprehensive error handling and user feedback."""
+                # Get the current uploader key to access the right session state
+                current_key = f"new_files_uploader_{st.session_state.uploader_key}"
+                uploaded_files = st.session_state.get(current_key, [])
                 
-                with st.spinner(f"Adding {len(new_uploaded_files)} new document(s)..."):
-                    st.session_state.chat_engine.add_documents(temp_file_paths)
+                if not uploaded_files:
+                    return
                 
-                shutil.rmtree(temp_dir)
-                st.session_state.kb_initialized = True
-                
-                # Add a success message to the chat
-                st.session_state.chat_history.append(
-                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about it!")
-                )
-                st.rerun()
+                try:
+                    # Check for duplicates
+                    existing_files = set(st.session_state.chat_engine.file_names)
+                    files_to_add = []
+                    duplicate_files = []
+                    
+                    for uploaded_file in uploaded_files:
+                        if uploaded_file.name in existing_files:
+                            duplicate_files.append(uploaded_file.name)
+                        else:
+                            files_to_add.append(uploaded_file)
+                    
+                    # Show duplicate warnings
+                    if duplicate_files:
+                        for duplicate_file in duplicate_files:
+                            st.warning(f"📁 {duplicate_file} is already in the knowledge base")
+                    
+                    # Process new files if any
+                    if files_to_add:
+                        temp_dir = "temp_uploads_add"
+                        if not os.path.exists(temp_dir): 
+                            os.makedirs(temp_dir)
+                        
+                        temp_file_paths = []
+                        successful_files = []
+                        
+                        # Save files to temp directory
+                        for file in files_to_add:
+                            temp_path = os.path.join(temp_dir, file.name)
+                            try:
+                                with open(temp_path, "wb") as f:
+                                    f.write(file.getbuffer())
+                                temp_file_paths.append(temp_path)
+                                successful_files.append(file.name)
+                            except Exception as e:
+                                st.error(f"❌ Failed to process {file.name}: File may be corrupted")
+                        
+                        # Add documents to knowledge base
+                        if temp_file_paths:
+                            try:
+                                with st.spinner(f"Adding {len(successful_files)} new document(s)..."):
+                                    st.session_state.chat_engine.add_documents(temp_file_paths)
+                                
+                                # Success message
+                                file_list = ", ".join(successful_files)
+                                st.session_state.chat_history.append(
+                                    AIMessage(content=f"✅ Successfully added to Knowledge Base: {file_list}")
+                                )
+                                
+                                # Increment uploader key to create a new uploader (effectively clearing it)
+                                st.session_state.uploader_key += 1
+                                
+                            except Exception as e:
+                                st.error("❌ Some files couldn't be processed. They may be empty, corrupted, or in an unsupported format.")
+                                
+                        # Cleanup
+                        if os.path.exists(temp_dir):
+                            shutil.rmtree(temp_dir)
+                    
+                    elif not duplicate_files:
+                        st.info("No files were selected for upload.")
+                        
+                except Exception as e:
+                    st.error("❌ An unexpected error occurred. Please try again or contact support.")
+            
+            st.button(
+                "Add to Knowledge Base", 
+                on_click=handle_add_documents,
+                use_container_width=True, 
+                disabled=not new_uploaded_files
+            )
 
         else:
             # --- NO KB: SHOW CREATE_KB_UI ---
@@ -172,23 +239,64 @@ def main():
             )
 
             if st.button("Create Knowledge Base", use_container_width=True, disabled=not initial_uploaded_files):
-                temp_dir = "temp_uploads_create"
-                if not os.path.exists(temp_dir): os.makedirs(temp_dir)
-                temp_file_paths = [os.path.join(temp_dir, f.name) for f in initial_uploaded_files]
-                for file, path in zip(initial_uploaded_files, temp_file_paths):
-                    with open(path, "wb") as f:
-                        f.write(file.getbuffer())
-
-                with st.spinner(f"Creating knowledge base from {len(initial_uploaded_files)} document(s)...\n(This may take a moment for large KBs)"):
-                    st.session_state.chat_engine.create_and_save(temp_file_paths)
+                try:
+                    # Remove duplicates from initial upload
+                    unique_files = {}
+                    duplicate_count = 0
+                    
+                    for uploaded_file in initial_uploaded_files:
+                        if uploaded_file.name not in unique_files:
+                            unique_files[uploaded_file.name] = uploaded_file
+                        else:
+                            duplicate_count += 1
+                    
+                    if duplicate_count > 0:
+                        st.warning(f"⚠️ Removed {duplicate_count} duplicate file(s) from your selection")
+                    
+                    temp_dir = "temp_uploads_create"
+                    if not os.path.exists(temp_dir): 
+                        os.makedirs(temp_dir)
+                    
+                    temp_file_paths = []
+                    successful_files = []
+                    
+                    # Save unique files to temp directory
+                    for file_name, file in unique_files.items():
+                        temp_path = os.path.join(temp_dir, file_name)
+                        try:
+                            with open(temp_path, "wb") as f:
+                                f.write(file.getbuffer())
+                            temp_file_paths.append(temp_path)
+                            successful_files.append(file_name)
+                        except Exception as e:
+                            st.error(f"❌ Failed to process {file_name}: File may be corrupted")
+                    
+                    # Create knowledge base
+                    if temp_file_paths:
+                        try:
+                            with st.spinner(f"Creating knowledge base from {len(successful_files)} document(s)...\n(This may take a moment for large files)"):
+                                st.session_state.chat_engine.create_and_save(temp_file_paths)
+                            
+                            st.session_state.kb_initialized = True
+                            
+                            # Success message
+                            file_list = ", ".join(successful_files)
+                            st.session_state.chat_history.append(
+                                AIMessage(content=f"✅ Knowledge Base created successfully with: {file_list}")
+                            )
+                            
+                        except Exception as e:
+                            st.error("❌ Failed to create knowledge base. Some files may be empty, corrupted, or in an unsupported format.")
+                    else:
+                        st.error("❌ No valid files could be processed.")
+                    
+                    # Cleanup
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
+                        
+                except Exception as e:
+                    st.error("❌ An unexpected error occurred while creating the knowledge base. Please try again.")
                 
-                shutil.rmtree(temp_dir)
-                st.session_state.kb_initialized = True
-                
-                # Add a success message to the chat
-                st.session_state.chat_history.append(
-                    AIMessage(content="✅ Your knowledge base is loaded and ready. You can now ask me anything about it!")
-                )
                 st.rerun()
         
         # Reset button (naturally placed, not forced to bottom)
