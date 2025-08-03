@@ -62,13 +62,27 @@ def render_knowledge_base_section(chat_engine, chat_history: List):
     if not chat_engine.file_names:
         st.info("Your knowledge base is empty. Add some documents below.")
     else:
-        # Create scrollable container that shows exactly 4 files
         num_files = len(chat_engine.file_names)
-        container_height = min(num_files, 4) * 95  # 95px per file, max 4 files visible
         
-        with st.container(height=container_height):
+        if num_files <= 2:
+            # Very few files - no container needed, full flexibility
             for file_name in chat_engine.file_names:
                 render_document_expander(file_name, chat_engine, chat_history)
+        elif num_files <= 4:
+            # Moderate number of files - minimal container with extra space
+            container_height = num_files * 80 + 100  # 80px per file + 100px buffer
+            with st.container(height=container_height):
+                for file_name in chat_engine.file_names:
+                    render_document_expander(file_name, chat_engine, chat_history)
+        else:
+            # Many files - scrollable container with generous height for expansion
+            base_height = 4 * 70  # Show 4 files at base height
+            expansion_buffer = 150  # Generous buffer for expanded content
+            container_height = base_height + expansion_buffer
+            
+            with st.container(height=container_height):
+                for file_name in chat_engine.file_names:
+                    render_document_expander(file_name, chat_engine, chat_history)
 
 def render_reset_section():
     """Render the reset knowledge base section."""
