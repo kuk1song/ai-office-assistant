@@ -158,9 +158,9 @@ def main():
             # --- NO KB: SHOW CREATE_KB_UI ---
             st.info(
                 """
-                **Welcome to your AI Office Assistant!**
+                **💡 Welcome to your AI Office Assistant!**
                 
-                To get started, please upload one or more documents to create your first knowledge base.
+                To get started, please upload one or more documents to create your knowledge base.
                 """
             )
             initial_uploaded_files = st.file_uploader(
