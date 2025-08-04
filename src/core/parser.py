@@ -169,29 +169,48 @@ class DocumentParser:
     def _extract_text_from_image(image_path: str) -> str:
         """Extract text from image using OCR (Tesseract)."""
         if not OCR_AVAILABLE:
+            print("OCR not available: pytesseract or PIL not installed")
             return ""
         
         try:
+            # Check if tesseract is actually available
+            try:
+                import pytesseract
+                # Test tesseract installation
+                pytesseract.get_tesseract_version()
+                print(f"Tesseract version: {pytesseract.get_tesseract_version()}")
+            except Exception as version_error:
+                print(f"Tesseract system dependency error: {version_error}")
+                return ""
+            
             image = Image.open(image_path)
+            print(f"Processing image: {image_path}, size: {image.size}")
             
             # Try multiple PSM (Page Segmentation Mode) configurations for better results
             psm_configs = [6, 8, 11, 13]  # Different modes for various image types
             
-            for psm in psm_configs:
+            for i, psm in enumerate(psm_configs):
                 try:
                     custom_config = f'--oem 3 --psm {psm}'
+                    print(f"Trying OCR config {i+1}/{len(psm_configs)}: {custom_config}")
                     text = pytesseract.image_to_string(image, config=custom_config)
                     
                     if text.strip():  # If we get meaningful text, return it
+                        print(f"OCR successful with config {custom_config}, extracted {len(text.strip())} characters")
                         return text.strip()
                         
-                except Exception:
+                except Exception as config_error:
+                    print(f"OCR config {custom_config} failed: {config_error}")
                     continue
             
+            print("All OCR configurations failed to extract meaningful text")
             return ""  # Return empty string if all PSM configs fail
             
         except Exception as e:
-            print(f"OCR Error for {image_path}: {e}")
+            print(f"OCR Error for {image_path}: {type(e).__name__}: {e}")
+            # Try to provide more specific error information
+            if "TesseractNotFoundError" in str(type(e)):
+                print("Tesseract executable not found. Make sure tesseract-ocr is installed on the system.")
             return ""
 
 # Backward compatibility function
