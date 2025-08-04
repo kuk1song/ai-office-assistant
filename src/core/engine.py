@@ -111,8 +111,28 @@ class AgentEngine:
                 return f"Error: The file '{file_name}' was not found in the knowledge base. Please use one of the available files: {', '.join(self.file_names)}"
             
             text_to_summarize = self.raw_texts[file_name]
-            system_prompt = f"You are a highly skilled summarization assistant. Your sole task is to generate a concise and comprehensive summary of the provided document text. The summary MUST be written in the following language: {language}."
-            human_prompt = f"Please summarize the following document, '{file_name}', in {language}:\n\nDocument content:\n{text_to_summarize[:16000]}"
+            
+            # Enhanced language-specific prompt
+            language_instruction = f"""
+CRITICAL LANGUAGE REQUIREMENT: You MUST write the entire summary in {language}. 
+- If {language} is "中文" or "Chinese", write EVERYTHING in Chinese characters (中文).
+- If {language} is "English", write EVERYTHING in English.
+- Do NOT mix languages.
+- Do NOT provide translations or explanations in other languages.
+- The summary content, headers, and all text must be in {language}.
+"""
+            
+            system_prompt = f"""You are a professional document summarization expert. {language_instruction}
+
+Your task is to create a comprehensive yet concise summary of the provided document. Focus on:
+1. Main topics and key points
+2. Important data, numbers, and technical details
+3. Conclusions and findings
+4. Overall document purpose and context
+
+Remember: Write the ENTIRE response in {language} only."""
+            
+            human_prompt = f"Summarize this document in {language}:\n\nDocument: {file_name}\n\nContent:\n{text_to_summarize[:16000]}"
             
             response = self.llm.invoke([
                 SystemMessage(content=system_prompt),
@@ -272,7 +292,7 @@ class AgentEngine:
         print("Rebuilding agent with updated file list...")
         agent_prompt = ChatPromptTemplate.from_messages([
             ("system", AGENT_SYSTEM_PROMPT.format(file_list=", ".join(self.file_names))),
-            AIMessage(content="Hello! I am your AI assistant. How can I help you with your documents today?"),
+            ("placeholder", "{chat_history}"),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}")
         ])
