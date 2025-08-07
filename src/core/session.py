@@ -20,7 +20,7 @@ def initialize_app():
             
         st.session_state.chat_engine = AgentEngine(api_key)
         
-        if st.session_state.chat_engine.load_from_disk():
+        if st.session_state.chat_engine.load():
             st.session_state.kb_initialized = True
             st.session_state.chat_history = [AIMessage(content="Welcome back! Your knowledge base is loaded and ready.")]
         else:
@@ -31,11 +31,12 @@ def initialize_app():
 
 def reset_knowledge_base():
     """Clears chat history and deletes the persistent knowledge base."""
-    st.session_state.clear()
+    # Use the engine's reset method if available
+    if "chat_engine" in st.session_state and st.session_state.chat_engine:
+        st.session_state.chat_engine.reset_storage()
     
-    # Delete the persistent storage directory
-    if os.path.exists(STORAGE_DIR):
-        shutil.rmtree(STORAGE_DIR)
+    # Clear session state
+    st.session_state.clear()
     
     # A rerun will be triggered automatically by Streamlit after the callback.
 

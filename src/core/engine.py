@@ -6,6 +6,7 @@ import json
 from typing import List, Dict
 from .parser import DocumentParser
 from .tools import create_all_tools
+from .models import AIModelManager
 
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -54,9 +55,12 @@ class AgentEngine:
             raise ValueError("OpenAI API key is required.")
         os.environ["OPENAI_API_KEY"] = api_key
         
-        # Core components
-        self.llm = ChatOpenAI(model="gpt-4o-mini")
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+        # --- AI Model Management (New Architecture) ---
+        self.ai_models = AIModelManager(api_key)
+        
+        # Core components (Backward Compatibility)
+        self.llm = self.ai_models.get_llm_provider().get_llm()
+        self.embeddings = self.ai_models.get_embedding_provider().get_embeddings()
         
         # State variables
         self.vectorstore: FAISS = None

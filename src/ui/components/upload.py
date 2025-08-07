@@ -11,7 +11,7 @@ import streamlit as st
 import os
 import shutil
 from langchain_core.messages import AIMessage
-from typing import List, Tuple
+from typing import List
 
 def render_welcome_message():
     """Render the welcome message for new users."""
@@ -23,34 +23,7 @@ def render_welcome_message():
         """
     )
 
-def handle_file_upload(uploaded_files: List, temp_dir: str) -> Tuple[List, List]:
-    """
-    Handle file upload and save to temporary directory.
-    
-    Args:
-        uploaded_files: List of uploaded file objects
-        temp_dir: Temporary directory path
-        
-    Returns:
-        tuple: (temp_file_paths, successful_files)
-    """
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-    
-    temp_file_paths = []
-    successful_files = []
-    
-    for file in uploaded_files:
-        temp_path = os.path.join(temp_dir, file.name)
-        try:
-            with open(temp_path, "wb") as f:
-                f.write(file.getbuffer())
-            temp_file_paths.append(temp_path)
-            successful_files.append(file.name)
-        except Exception as e:
-            st.error(f"❌ Failed to process {file.name}: File may be corrupted")
-    
-    return temp_file_paths, successful_files
+
 
 def create_knowledge_base_handler(chat_engine, chat_history: List):
     """Create the handler function for initial knowledge base creation."""
@@ -75,22 +48,29 @@ def create_knowledge_base_handler(chat_engine, chat_history: List):
             if duplicate_count > 0:
                 st.warning(f"⚠️ Removed {duplicate_count} duplicate file(s) from your selection")
             
-            temp_dir = "temp_uploads_create"
-            temp_file_paths, successful_files = handle_file_upload(unique_files.values(), temp_dir)
-            
-            # Create knowledge base
-            if temp_file_paths:
+
+            # Create knowledge base directly from uploaded files
+            if unique_files:
                 try:
-                    with st.spinner(f"Creating knowledge base from {len(successful_files)} document(s)...\n(This may take a moment for large files)"):
-                        chat_engine.create_and_save(temp_file_paths)
+                    with st.spinner(f"Creating knowledge base from {len(unique_files)} document(s)...\n(This may take a moment for large files)"):
+                        failed_files = chat_engine.create_and_save(list(unique_files.values()))
                     
                     st.session_state.kb_initialized = True
                     
                     # Success message
-                    file_list = ", ".join(successful_files)
-                    chat_history.append(
-                        AIMessage(content=f"✅ Knowledge Base created successfully with: {file_list}")
-                    )
+                    successful_files = [f.name for f in unique_files.values() if f.name not in failed_files]
+                    if successful_files:
+                        file_list = ", ".join(successful_files)
+                        chat_history.append(
+                            AIMessage(content=f"✅ Knowledge Base created successfully with: {file_list}")
+                        )
+                    
+                    # Show failed files if any
+                    if failed_files:
+                        failed_list = ", ".join(failed_files)
+                        chat_history.append(
+                            AIMessage(content=f"⚠️ Some files couldn't be processed: {failed_list}")
+                        )
                     
                 except ValueError as ve:
                     # Handle specific errors from create_and_save
@@ -118,10 +98,6 @@ def create_knowledge_base_handler(chat_engine, chat_history: List):
                     st.error("❌ An unexpected error occurred while creating the knowledge base. Please try again.")
             else:
                 st.error("❌ No valid files could be processed.")
-            
-            # Cleanup
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
                 
         except Exception as e:
             st.error("❌ An unexpected error occurred while creating the knowledge base. Please try again.")
@@ -176,30 +152,30 @@ def create_add_documents_handler(chat_engine, chat_history: List):
             
             # Process new files if any
             if files_to_add:
-                temp_dir = "temp_uploads_add"
-                temp_file_paths, successful_files = handle_file_upload(files_to_add, temp_dir)
-                
-                # Add documents to knowledge base
-                if temp_file_paths:
-                    try:
-                        with st.spinner(f"Adding {len(successful_files)} new document(s)..."):
-                            chat_engine.add_documents(temp_file_paths)
-                        
-                        # Success message
+                try:
+                    with st.spinner(f"Adding {len(files_to_add)} new document(s)..."):
+                        failed_files = chat_engine.add_documents(files_to_add)
+                    
+                    # Success message for successfully added files
+                    successful_files = [f.name for f in files_to_add if f.name not in failed_files]
+                    if successful_files:
                         file_list = ", ".join(successful_files)
                         chat_history.append(
                             AIMessage(content=f"✅ Successfully added to Knowledge Base: {file_list}")
                         )
-                        
-                        # Increment uploader key to create a new uploader (effectively clearing it)
-                        st.session_state.uploader_key += 1
-                        
-                    except Exception as e:
-                        st.error("❌ Some files couldn't be processed. They may be empty, corrupted, or in an unsupported format.")
-                        
-                # Cleanup
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
+                    
+                    # Show failed files if any
+                    if failed_files:
+                        failed_list = ", ".join(failed_files)
+                        chat_history.append(
+                            AIMessage(content=f"⚠️ Some files couldn't be processed: {failed_list}")
+                        )
+                    
+                    # Increment uploader key to create a new uploader (effectively clearing it)
+                    st.session_state.uploader_key += 1
+                    
+                except Exception as e:
+                    st.error("❌ Some files couldn't be processed. They may be empty, corrupted, or in an unsupported format.")
             
             elif not duplicate_files:
                 st.info("No files were selected for upload.")

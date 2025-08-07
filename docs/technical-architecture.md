@@ -95,4 +95,125 @@ AI 办公助手是一款专为公司内部使用而设计的安全、全栈式 A
     - `engine.py` 中的 `AgentEngine` 接收查询。
     - 智能体决定使用哪个工具。对于问答，`rag_chain` 从 `FAISS` 向量存储中检索相关的文档块。
     - 检索到的上下文和用户查询被发送到 LLM 以生成响应。
-    - 对话在 `st.session_state` 中更新。 
+    - 对话在 `st.session_state` 中更新。
+
+---
+
+## 5. 架构重构计划
+
+当前的架构存在一些可改进的地方，特别是 `engine.py` 承担了过多职责。基于业界最佳实践，我们制定了详细的重构计划。
+
+### 5.1. 当前架构问题
+
+```mermaid
+graph TB
+    subgraph "当前问题：单一巨大组件"
+        AE[AgentEngine<br/>❌ 承担6大职责] --> P1[🤖 AI模型管理]
+        AE --> P2[🗄️ 知识库管理]
+        AE --> P3[🔧 工具编排]
+        AE --> P4[💾 持久化管理]
+        AE --> P5[🎯 对话执行]
+        AE --> P6[📄 文档处理]
+    end
+    
+    style AE fill:#ffcdd2
+    style P1 fill:#ffcdd2
+    style P2 fill:#ffcdd2
+    style P3 fill:#ffcdd2
+    style P4 fill:#ffcdd2
+    style P5 fill:#ffcdd2
+    style P6 fill:#ffcdd2
+```
+
+### 5.2. 目标架构设计
+
+```mermaid
+graph TB
+    subgraph "新架构 - 按业务能力拆分"
+        A[KnowledgeBaseManager<br/>知识库管理器] --> A1[DocumentProcessor<br/>文档处理器]
+        A --> A2[VectorStoreManager<br/>向量存储管理器] 
+        A --> A3[PersistenceManager<br/>持久化管理器]
+        
+        B[ConversationOrchestrator<br/>对话编排器] --> B1[AgentExecutor<br/>智能体执行器]
+        B --> B2[RAGRetriever<br/>检索器]
+        B --> B3[ToolRegistry<br/>工具注册器]
+        
+        C[AIModelManager<br/>AI模型管理器] --> C1[LLMProvider<br/>语言模型提供器]
+        C --> C2[EmbeddingProvider<br/>嵌入模型提供器]
+    end
+    
+    subgraph "业务边界"
+        KnowledgeBase[📚 知识库业务]
+        Conversation[💬 对话业务] 
+        AIModel[🤖 AI模型业务]
+    end
+    
+    A -.-> KnowledgeBase
+    B -.-> Conversation
+    C -.-> AIModel
+    
+    style A fill:#e8f5e8
+    style B fill:#e1f5fe  
+    style C fill:#fff3e0
+    style KnowledgeBase fill:#c8e6c9
+    style Conversation fill:#b3e5fc
+    style AIModel fill:#ffe0b2
+```
+
+### 5.3. 新模块职责分工
+
+| 模块 | 职责 | 为什么这样命名 |
+|------|------|----------------|
+| **`KnowledgeBaseManager`** | 管理整个知识库生命周期 | 直接表明管理知识库的核心职责 |
+| **`DocumentProcessor`** | 文档解析、文本分割、验证 | 专门处理文档相关操作 |
+| **`VectorStoreManager`** | FAISS向量存储操作 | 专门管理向量存储 |
+| **`PersistenceManager`** | 数据持久化保存/加载 | 专门负责持久化 |
+| **`ConversationOrchestrator`** | 编排对话流程 | 编排整个对话过程 |
+| **`AgentExecutor`** | 执行AI Agent | 专门执行Agent |
+| **`RAGRetriever`** | RAG检索逻辑 | 专门负责检索增强 |
+| **`ToolRegistry`** | 工具注册和管理 | 专门管理工具 |
+| **`AIModelManager`** | AI模型管理 | 管理所有AI模型 |
+
+### 5.4. 重构后的数据流
+
+```mermaid
+sequenceDiagram
+    participant UI as UI Layer
+    participant KB as KnowledgeBaseManager
+    participant CO as ConversationOrchestrator  
+    participant AI as AIModelManager
+    
+    Note over UI,AI: 文档上传流程
+    UI->>KB: create_knowledge_base(files)
+    KB->>KB: DocumentProcessor.process()
+    KB->>AI: EmbeddingProvider.embed()
+    KB->>KB: VectorStoreManager.create()
+    KB->>KB: PersistenceManager.save()
+    KB-->>UI: 创建成功
+    
+    Note over UI,AI: 对话查询流程
+    UI->>CO: start_conversation(query)
+    CO->>KB: RAGRetriever.search()
+    CO->>AI: LLMProvider.generate()
+    CO->>CO: AgentExecutor.run()
+    CO-->>UI: 返回回答
+```
+
+### 5.5. 重构收益
+
+**代码质量提升：**
+- ✅ 每个类职责单一，易于理解和维护
+- ✅ 描述性命名，一目了然
+- ✅ 高内聚低耦合，便于测试
+
+**团队协作改善：**
+- ✅ 并行开发，提高效率
+- ✅ 专业化分工，降低学习成本
+- ✅ 代码审查更有针对性
+
+**系统扩展性：**
+- ✅ 更容易添加新功能
+- ✅ 可以针对性优化特定模块
+- ✅ 技术栈升级更灵活
+
+> 📋 **详细重构计划**：完整的架构重构计划请参考 [`docs/architecture-refactoring-plan.md`](./architecture-refactoring-plan.md) 

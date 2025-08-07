@@ -13,8 +13,7 @@ This structure will support the future multi-layer navigation system.
 from .chat import render_chat_messages, handle_chat_input
 from .upload import (
     render_initial_upload_section,
-    render_add_documents_section,
-    handle_file_upload
+    render_add_documents_section
 )
 from .knowledge_base import (
     render_knowledge_base_section,
@@ -30,7 +29,6 @@ __all__ = [
     # Upload components
     'render_initial_upload_section', 
     'render_add_documents_section',
-    'handle_file_upload',
     
     # Knowledge base components
     'render_knowledge_base_section',
