@@ -5,17 +5,15 @@ import os
 import json
 from typing import List, Dict
 from .parser import DocumentParser
+from .tools import create_all_tools
 
-from langchain.tools import tool
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain.agents import AgentExecutor, create_openai_tools_agent
-from pydantic.v1 import BaseModel, Field
 import shutil
 
 # --- STORAGE CONFIGURATION ---
@@ -46,27 +44,6 @@ Always be professional, concise, and when possible, cite the source document for
 """
 
 
-# --- Pydantic Models for Tool Inputs ---
-class DocumentInput(BaseModel):
-    file_name: str = Field(description="The exact file name of the document to process.")
-    
-class TechSpecInput(DocumentInput):
-    parameters_to_extract: List[str] = Field(description="A list of specific technical parameters to extract from the document.")
-
-class SummarizeInput(BaseModel):
-    file_name: str = Field(description="The exact file name of the document to summarize.")
-    language: str = Field(description="The language for the summary (e.g., 'English', '中文', 'italiano').", default="English")
-
-class LinkBudgetInput(BaseModel):
-    distance_km: float = Field(description="The distance between the two sites in kilometers.")
-    transmitter_power_dBm: float = Field(description="The output power of the transmitter in dBm.")
-    transmitter_cable_loss_dB: float = Field(description="The cable and connector loss at the transmitter side in dB.")
-    transmitter_antenna_gain_dBi: float = Field(description="The gain of the transmitter's antenna in dBi.")
-    receiver_antenna_gain_dBi: float = Field(description="The gain of the receiver's antenna in dBi.")
-    receiver_cable_loss_dB: float = Field(description="The cable and connector loss at the receiver side in dB.")
-    frequency_MHz: float = Field(description="The operating frequency in Megahertz.")
-
-
 class AgentEngine:
     """
     An AI Agent that can use tools to interact with a knowledge base of documents.
@@ -91,150 +68,11 @@ class AgentEngine:
         # Ensure storage directory exists
         os.makedirs(STORAGE_DIR, exist_ok=True)
         
-        # --- Define Tools ---
-        @tool
-        def knowledge_base_qa(query: str) -> str:
-            """
-            Use this tool to answer any questions about the content of the uploaded documents.
-            The input should be a user's full question.
-            This is your primary tool for information retrieval.
-            """
-            if not self.rag_chain:
-                return "Error: The knowledge base is not initialized. Please load documents first."
-            response = self.rag_chain.invoke({"input": query})
-            return response.get("answer", "I could not find an answer in the documents.")
-
-        @tool(args_schema=SummarizeInput)
-        def summarize_document(file_name: str, language: str = "English") -> str:
-            """
-            Use this tool to generate a detailed summary of a SINGLE, SPECIFIC document in a specified language.
-            The first input MUST be the exact file name.
-            The second, optional input is the language for the summary (defaults to English).
-            """
-            # Debug output to verify language parameter
-            print(f"[DEBUG] Summarize tool called with: file_name='{file_name}', language='{language}'")
-            
-            if file_name not in self.raw_texts:
-                return f"Error: The file '{file_name}' was not found in the knowledge base. Please use one of the available files: {', '.join(self.file_names)}"
-            
-            text_to_summarize = self.raw_texts[file_name]
-            
-            # Enhanced language-specific prompt with stronger enforcement
-            language_instruction = f"""
-ABSOLUTE CRITICAL LANGUAGE REQUIREMENT: 
-The user has specifically requested the summary in "{language}". You MUST strictly comply.
-
-LANGUAGE RULES:
-- If language is "中文", "Chinese", or "chinese": Write EVERYTHING in Chinese characters only (中文).
-- If language is "italiano", "Italian", or "italian": Write EVERYTHING in Italian only.
-- If language is "English" or "english": Write EVERYTHING in English only.
-- For any other language: Write EVERYTHING in that specified language only.
-
-STRICT PROHIBITIONS:
-- NEVER write in English if another language is requested
-- NEVER mix languages in the same response
-- NEVER provide translations or bilingual content
-- NEVER add English explanations after non-English content
-
-COMPLIANCE CHECK: Before responding, verify that your ENTIRE response is written in "{language}".
-"""
-            
-            system_prompt = f"""You are a professional document summarization expert. {language_instruction}
-
-Your task is to create a comprehensive yet concise summary of the provided document. Focus on:
-1. Main topics and key points
-2. Important data, numbers, and technical details
-3. Conclusions and findings
-4. Overall document purpose and context
-
-FINAL REMINDER: Your response must be written entirely in "{language}". Do not write in any other language."""
-            
-            human_prompt = f"""Please summarize this document in {language} ONLY. 
-Do not use any other language in your response.
-
-Document: {file_name}
-
-Content:
-{text_to_summarize[:16000]}
-
-Remember: Respond entirely in {language}."""
-            
-            response = self.llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=human_prompt)
-            ])
-            return response.content
-
-        @tool(args_schema=TechSpecInput)
-        def extract_technical_specifications(file_name: str, parameters_to_extract: List[str]) -> Dict[str, any]:
-            """
-            Extracts specific numerical or textual technical parameters from a given document.
-            Use this to gather the necessary data before performing calculations.
-            For example, extract ['Transmitter Power (dBm)', 'Antenna Gain (dBi)'] from 'site_A_specs.pdf'.
-            """
-            if file_name not in self.raw_texts:
-                return {"error": f"The file '{file_name}' was not found. Available files: {', '.join(self.file_names)}"}
-
-            document_text = self.raw_texts[file_name]
-            
-            # Using JSON mode for structured output
-            json_llm = self.llm.bind(response_format={"type": "json_object"})
-            
-            extraction_prompt = f"""
-            Given the following document text for '{file_name}', extract the values for the following parameters:
-            {', '.join(parameters_to_extract)}
-
-            Please return the result as a JSON object where the keys are the parameter names and the values are the extracted values.
-            If a parameter is not found, its value should be null.
-            Only return the JSON object, with no other text.
-
-            Document Text:
-            ---
-            {document_text[:16000]}
-            ---
-            """
-            
-            try:
-                response = json_llm.invoke([HumanMessage(content=extraction_prompt)])
-                extracted_data = json.loads(response.content)
-                return extracted_data
-            except Exception as e:
-                return {"error": f"Failed to extract or parse data for {file_name}. Reason: {e}"}
-
-        @tool(args_schema=LinkBudgetInput)
-        def calculate_link_budget(distance_km: float, transmitter_power_dBm: float, transmitter_cable_loss_dB: float, transmitter_antenna_gain_dBi: float, receiver_antenna_gain_dBi: float, receiver_cable_loss_dB: float, frequency_MHz: float) -> Dict[str, any]:
-            """
-            Calculates the link budget for a point-to-point communication link based on provided parameters.
-            This is a pure calculation tool and does not read from documents. All parameters must be provided.
-            Returns a dictionary with all calculated values, including the final Link Margin.
-            """
-            # EIRP Calculation
-            eirp_dBm = transmitter_power_dBm - transmitter_cable_loss_dB + transmitter_antenna_gain_dBi
-            
-            # Free Space Path Loss (FSPL) Calculation
-            # FSPL (dB) = 20 * log10(d) + 20 * log10(f) + 20 * log10(4π/c)
-            # 20 * log10(4π/c) where f is in MHz and d is in km is approx -27.55
-            fspl_dB = 20 * __import__('math').log10(distance_km) + 20 * __import__('math').log10(frequency_MHz) + 27.55
-            
-            # Received Power Calculation
-            received_power_dBm = eirp_dBm - fspl_dB + receiver_antenna_gain_dBi - receiver_cable_loss_dB
-            
-            return {
-                "Effective Isotropic Radiated Power (EIRP) dBm": round(eirp_dBm, 2),
-                "Free Space Path Loss (FSPL) dB": round(fspl_dB, 2),
-                "Calculated Received Power dBm": round(received_power_dBm, 2)
-                # Note: True Link Margin requires Receiver Sensitivity, which the user must provide for the final comparison.
-                # The agent will need to compare this received power with the sensitivity.
-            }
-
-        self.tools = [
-            knowledge_base_qa,
-            summarize_document,
-            extract_technical_specifications,
-            calculate_link_budget
-        ]
+        # --- Initialize Tools ---
+        self.tools = create_all_tools(self)
+        
         # Expose summary tool for direct calls from UI
-        self.summarize_document = summarize_document
+        self.summarize_document = self.tools[1]  # summarize_document is the second tool
 
     def _get_text_splitter(self, docs_for_rag: List = None):
         """
@@ -337,202 +175,256 @@ Question: {input}
         question_answer_chain = create_stuff_documents_chain(self.llm, qa_prompt)
         self.rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
-    def load_from_disk(self) -> bool:
-        """
-        Loads an existing vector store and metadata from disk.
-        Returns True if successful, False otherwise.
-        """
-        if os.path.exists(FAISS_INDEX_PATH) and os.path.exists(METADATA_PATH):
-            print("Found existing knowledge base. Loading from disk...")
-            self.vectorstore = FAISS.load_local(FAISS_INDEX_PATH, self.embeddings, allow_dangerous_deserialization=True)
-            with open(METADATA_PATH, 'r') as f:
-                metadata = json.load(f)
-                self.file_names = metadata["file_names"]
-                self.raw_texts = metadata["raw_texts"]
+    def create_and_save(self, uploaded_files: List) -> List[str]:
+        """Create knowledge base from uploaded files and save persistently."""
+        print("🔧 Creating knowledge base...")
+        
+        docs_for_rag = []
+        failed_files = []
+        
+        for file in uploaded_files:
+            print(f"📄 Processing: {file.name}")
             
-            self._build_rag_chain()
-            self._build_agent()
-            print("Successfully loaded knowledge base.")
-            return True
-        return False
+            # Save the uploaded file to a temporary location
+            with open(file.name, "wb") as f:
+                f.write(file.getvalue())
+            
+            # Parse the document
+            parsed_result = DocumentParser.parse_document(file.name)
+            
+            if "error" in parsed_result:
+                print(f"  ❌ Failed to parse {file.name}: {parsed_result['error']}")
+                failed_files.append(file.name)
+                os.remove(file.name)  # Clean up
+                continue
+            
+            text = parsed_result["content"]
+            
+            # Check if the text is actually valid content or OCR failure
+            if not text or text.startswith("=== Document contains only images with no readable text ==="):
+                print(f"  - {file.name} contains no readable text (may be image-only or OCR failed)")
+                failed_files.append(file.name)
+                os.remove(file.name)  # Clean up
+                continue
+            
+            print(f"  ✅ Extracted {len(text)} characters")
+            docs_for_rag.append((text, {"source": file.name}))
+            self.raw_texts[file.name] = text
+            os.remove(file.name)  # Clean up
+        
+        if not docs_for_rag:
+            raise ValueError("❌ No files could be processed successfully. Please check your file formats and content.")
+        
+        # Smart text splitting
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        
+        # Create valid chunks with filtering
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
+        
+        # Create vector store
+        print("🔤 Creating embeddings...")
+        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
+        self.file_names = [file.name for file in uploaded_files if file.name not in failed_files]
+        
+        # Build chains and agents
+        self._build_rag_chain()
+        self._build_agent()
+        
+        # Save everything
+        self.save()
+        
+        print(f"✅ Knowledge base created with {len(self.file_names)} documents!")
+        return failed_files
 
-    def _save_to_disk(self):
-        """Saves the current vector store and metadata to disk."""
-        print("Saving knowledge base to disk...")
-        self.vectorstore.save_local(FAISS_INDEX_PATH)
+    def add_documents(self, uploaded_files: List) -> List[str]:
+        """Add new documents to existing knowledge base."""
+        print("🔧 Adding documents to existing knowledge base...")
+        
+        if not self.vectorstore:
+            raise ValueError("No existing knowledge base found. Please create one first.")
+        
+        docs_for_rag = []
+        failed_files = []
+        new_file_names = []
+        
+        for file in uploaded_files:
+            if file.name in self.file_names:
+                print(f"  ⚠️ {file.name} already exists, skipping...")
+                continue
+                
+            print(f"📄 Processing: {file.name}")
+            
+            # Save the uploaded file to a temporary location
+            with open(file.name, "wb") as f:
+                f.write(file.getvalue())
+            
+            # Parse the document
+            parsed_result = DocumentParser.parse_document(file.name)
+            
+            if "error" in parsed_result:
+                print(f"  ❌ Failed to parse {file.name}: {parsed_result['error']}")
+                failed_files.append(file.name)
+                os.remove(file.name)  # Clean up
+                continue
+            
+            text = parsed_result["content"]
+            
+            # Check if the text is actually valid content or OCR failure  
+            if not text or text.startswith("=== Document contains only images with no readable text ==="):
+                print(f"  - {file.name} contains no readable text (may be image-only or OCR failed)")
+                failed_files.append(file.name)
+                os.remove(file.name)  # Clean up
+                continue
+            
+            print(f"  ✅ Extracted {len(text)} characters")
+            docs_for_rag.append((text, {"source": file.name}))
+            self.raw_texts[file.name] = text
+            new_file_names.append(file.name)
+            os.remove(file.name)  # Clean up
+        
+        if not docs_for_rag:
+            print("No new documents were processed.")
+            return failed_files
+        
+        # Smart text splitting for new documents
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        
+        # Create valid chunks for new documents
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
+        
+        # Add to existing vector store
+        print("🔤 Adding new embeddings...")
+        self.vectorstore.add_documents(split_docs)
+        self.file_names.extend(new_file_names)
+        
+        # Rebuild chains and agents with updated file list
+        self._build_rag_chain()
+        self._build_agent()
+        
+        # Save everything
+        self.save()
+        
+        print(f"✅ Added {len(new_file_names)} new documents!")
+        return failed_files
+
+    def delete_document(self, file_name_to_delete: str):
+        """Delete a specific document from the knowledge base."""
+        if file_name_to_delete not in self.file_names:
+            raise ValueError(f"Document '{file_name_to_delete}' not found in knowledge base.")
+        
+        print(f"🗑️ Deleting document: {file_name_to_delete}")
+        
+        # Remove from file list and raw texts
+        self.file_names.remove(file_name_to_delete)
+        if file_name_to_delete in self.raw_texts:
+            del self.raw_texts[file_name_to_delete]
+        
+        # Check if any documents remain
+        if not self.file_names:
+            print("No documents remain. Clearing knowledge base...")
+            self.vectorstore = None
+            self.rag_chain = None
+            self.agent_executor = None
+            self.save()
+            return
+        
+        # Rebuild vector store without the deleted document
+        print("Rebuilding vector store without deleted document...")
+        docs_for_rag = [(self.raw_texts[name], {"source": name}) for name in self.file_names]
+        
+        # Smart text splitting
+        text_splitter = self._get_text_splitter(docs_for_rag)
+        
+        # Create valid chunks
+        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
+        
+        # Recreate vector store
+        print("🔤 Recreating embeddings...")
+        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
+        
+        # Rebuild chains and agents
+        self._build_rag_chain()
+        self._build_agent()
+        
+        # Save everything
+        self.save()
+        print(f"✅ Document '{file_name_to_delete}' deleted successfully!")
+
+    def save(self):
+        """Save the current state to persistent storage."""
+        if self.vectorstore:
+            self.vectorstore.save_local(FAISS_INDEX_PATH)
+        
+        # Save metadata
         metadata = {
             "file_names": self.file_names,
             "raw_texts": self.raw_texts
         }
-        with open(METADATA_PATH, 'w') as f:
-            json.dump(metadata, f)
-        print("Save complete.")
+        with open(METADATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 Saved to {STORAGE_DIR}")
 
-    def create_and_save(self, file_paths: List[str]):
-        """
-        Creates a new knowledge base from files and saves it to disk.
-        """
-        print("Creating new knowledge base...")
-        docs_for_rag = []
-        successful_files = []
-        failed_files = []
-        
-        for file_path in file_paths:
-            file_name = os.path.basename(file_path)
-            print(f"  - Processing: {file_name}")
-            try:
-                parsed_data = DocumentParser.parse_document(file_path)
-                if "error" in parsed_data:
-                    print(f"  - Failed to parse {file_name}: {parsed_data['error']}")
-                    failed_files.append(file_name)
-                    continue
-                
-                text = parsed_data.get("content", "").strip()
-                
-                # Check if the document has any readable content
-                # Also check for OCR failure indicators
-                if not text or text.startswith("=== Document contains only images with no readable text ==="):
-                    print(f"  - {file_name} contains no readable text (may be image-only or OCR failed)")
-                    failed_files.append(file_name)
-                    continue
-                    
-                self.raw_texts[file_name] = text
-                docs_for_rag.append((text, {"source": file_name}))
-                successful_files.append(file_name)
-                
-            except Exception as e:
-                print(f"  - Error processing {file_name}: {e}")
-                failed_files.append(file_name)
-        
-        if not docs_for_rag:
-            error_msg = "No readable content found in any of the uploaded documents."
-            if failed_files:
-                error_msg += f" Failed files: {', '.join(failed_files)}"
-            raise ValueError(error_msg)
-        
-        self.file_names = successful_files
-        
-        # Create optimized text splitter and chunks
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
+    def load(self) -> bool:
+        """Load existing state from persistent storage. Returns True if successful."""
         try:
-            self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
+            if not os.path.exists(FAISS_INDEX_PATH) or not os.path.exists(METADATA_PATH):
+                return False
+            
+            # Load metadata
+            with open(METADATA_PATH, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            
+            self.file_names = metadata.get("file_names", [])
+            self.raw_texts = metadata.get("raw_texts", {})
+            
+            if not self.file_names:
+                return False
+            
+            # Load vector store
+            self.vectorstore = FAISS.load_local(
+                FAISS_INDEX_PATH, 
+                self.embeddings,
+                allow_dangerous_deserialization=True
+            )
+            
+            # Rebuild chains and agents
             self._build_rag_chain()
             self._build_agent()
-            self._save_to_disk()
             
-            print(f"Successfully created knowledge base with {len(successful_files)} document(s) and {len(split_docs)} chunks.")
-            if failed_files:
-                print(f"Warning: {len(failed_files)} file(s) could not be processed: {', '.join(failed_files)}")
-                
+            print(f"📂 Loaded existing knowledge base with {len(self.file_names)} documents")
+            return True
+            
         except Exception as e:
-            raise ValueError(f"Failed to create knowledge base: {str(e)}")
+            print(f"❌ Failed to load existing knowledge base: {e}")
+            return False
 
-    def delete_document(self, file_name_to_delete: str):
-        """
-        Deletes a document from the knowledge base and rebuilds the index.
-        """
-        if file_name_to_delete not in self.file_names:
-            print(f"Error: Cannot delete '{file_name_to_delete}', as it's not in the knowledge base.")
-            return
-
-        print(f"Deleting '{file_name_to_delete}' from the knowledge base...")
-        
-        # Remove the file from our tracked lists
-        self.file_names.remove(file_name_to_delete)
-        self.raw_texts.pop(file_name_to_delete, None)
-        
-        if not self.file_names:
-            # If no files are left, just clear the storage
-            print("No files left in the knowledge base. Deleting storage...")
-            if os.path.exists(FAISS_INDEX_PATH):
-                shutil.rmtree(FAISS_INDEX_PATH)
-            if os.path.exists(METADATA_PATH):
-                os.remove(METADATA_PATH)
-            self.vectorstore = None
-            self.rag_chain = None
-            self.agent_executor = None
-            return
-
-        # Rebuild the entire knowledge base from the remaining files
-        print("Rebuilding knowledge base from remaining files...")
-        docs_for_rag = []
-        for file_name in self.file_names:
-            text = self.raw_texts.get(file_name, "")
-            if text:
-                docs_for_rag.append((text, {"source": file_name}))
-
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
-        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
-        self._build_rag_chain()
-        self._build_agent()
-        self._save_to_disk()
-        print(f"Successfully deleted '{file_name_to_delete}' and rebuilt the knowledge base.")
-
-    def add_documents(self, new_file_paths: List[str]):
-        """
-        Adds new documents to the existing knowledge base.
-        """
-        if not self.vectorstore:
-            raise ValueError("Cannot add documents to a non-existent knowledge base. Call create_and_save first.")
-            
-        print("Adding new documents to the knowledge base...")
-        docs_for_rag = []
-        for file_path in new_file_paths:
-            file_name = os.path.basename(file_path)
-            if file_name in self.file_names:
-                print(f"  - Skipping already existing file: {file_name}")
-                continue
-                
-            print(f"  - Processing: {file_name}")
-            parsed_data = DocumentParser.parse_document(file_path)
-            if "error" in parsed_data:
-                raise ValueError(f"Failed to parse {file_name}: {parsed_data['error']}")
-            
-            text = parsed_data.get("content", "")
-            self.raw_texts[file_name] = text
-            self.file_names.append(file_name)
-            docs_for_rag.append((text, {"source": file_name}))
-
-        if not docs_for_rag:
-            print("No new documents to add.")
-            return
-
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
-        # Add new documents to the existing vector store
-        try:
-            self.vectorstore.add_documents(split_docs)
-            print(f"Successfully added {len(split_docs)} document chunks to the vector store.")
-        except Exception as e:
-            print(f"Error adding documents to vector store: {e}")
-            raise ValueError("Failed to process documents. They may be empty, corrupted, or in an unsupported format.")
-        
-        # Rebuild agent with updated file list and save everything
-        self._build_rag_chain()
-        self._build_agent()
-        self._save_to_disk()
-        
-    def invoke(self, question: str, chat_history: List = None):
-        """
-        Invokes the agent to get a response.
-        """
+    def invoke(self, query: str, chat_history: List = None) -> str:
+        """Process a user query through the agent."""
         if not self.agent_executor:
-            return "The AI agent is not ready. Please create or load a knowledge base first."
-            
-        chat_history = chat_history or []
-        response = self.agent_executor.invoke({
-            "input": question,
-            "chat_history": chat_history
-        })
-        return response.get("output", "Sorry, I encountered an error.")
+            return "❌ Knowledge base not initialized. Please upload documents first."
+        
+        try:
+            response = self.agent_executor.invoke({
+                "input": query,
+                "chat_history": chat_history or []
+            })
+            return response["output"]
+        except Exception as e:
+            return f"❌ Error processing query: {str(e)}"
 
-# Example usage for testing
-if __name__ == '__main__':
-    # This section would need to be updated to test the new persistent workflow.
-    # e.g., create, then load, then add.
-    pass 
+    def reset_storage(self):
+        """Delete all persistent storage."""
+        if os.path.exists(STORAGE_DIR):
+            shutil.rmtree(STORAGE_DIR)
+            print(f"🗑️ Cleared storage directory: {STORAGE_DIR}")
+        
+        # Reset instance state
+        self.vectorstore = None
+        self.rag_chain = None
+        self.agent_executor = None
+        self.file_names = []
+        self.raw_texts = {}
+        
+        # Recreate storage directory
+        os.makedirs(STORAGE_DIR, exist_ok=True)

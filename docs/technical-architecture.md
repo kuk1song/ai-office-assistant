@@ -20,7 +20,7 @@ AI 办公助手是一款专为公司内部使用而设计的安全、全栈式 A
     - **`AgentEngine` 类**：协调所有 AI 操作的中心类。
     - **向量存储**：使用 `FAISS` 对文档嵌入进行高效的本地相似性搜索。
     - **LLM 与嵌入**：与 OpenAI 模型 (`gpt-4o-mini`, `text-embedding-3-small`) 集成，用于语言理解和生成。
-    - **智能体与工具**：实现一个 `LangChain` 智能体，该智能体可以使用一套专用工具 (`knowledge_base_qa`, `summarize_document`, `extract_technical_specifications`, `calculate_link_budget`)。
+    - **智能体与工具**：实现一个 `LangChain` 智能体，该智能体可以使用一套专用工具。工具已模块化并组织在 `src/core/tools/` 目录中，包括知识库问答、文档摘要、技术规格提取和链路预算计算。
     - **持久化**：处理 FAISS 索引和文档元数据到 `persistent_storage/` 目录的序列化和反序列化，使状态能够在会话之间保持。
 
 ### 2.2. `parser.py` - 文档解析器
@@ -30,7 +30,27 @@ AI 办公助手是一款专为公司内部使用而设计的安全、全栈式 A
     - 集成 `pytesseract` 进行光学字符识别 (OCR)，从而能够从基于图像的 PDF 中提取文本。
     - 将特定于文件的解析逻辑封装在静态方法中，以提高清晰度。
 
-### 2.3. `session.py` - 会话状态管理
+### 2.3. `tools/` - 模块化工具架构
+- **目的**：提供可维护、可扩展的工具组织结构。
+- **架构特点**：
+    - **工具分离**：每个工具在独立文件中，便于维护和测试。
+    - **工厂模式**：使用工厂函数绑定工具与引擎实例。
+    - **功能分组**：按功能领域组织（知识库、文档、技术、计算）。
+- **工具目录结构**：
+    ```
+    src/core/tools/
+    ├── __init__.py              # 工具注册和导出
+    ├── knowledge_base/
+    │   └── qa.py               # 知识库问答工具
+    ├── document/
+    │   └── summarizer.py       # 文档摘要工具
+    ├── technical/
+    │   └── spec_extractor.py   # 技术规格提取工具
+    └── calculations/
+        └── link_budget.py      # 链路预算计算工具
+    ```
+
+### 2.4. `session.py` - 会话状态管理
 - **目的**：在 Streamlit 会话中管理应用程序的状态。
 - **职责**：
     - 在应用程序启动时初始化 `AgentEngine`。
