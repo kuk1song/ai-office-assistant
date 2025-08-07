@@ -9,7 +9,7 @@ This package provides centralized management for AI models:
 
 from .llm_provider import LLMProvider
 from .embedding_provider import EmbeddingProvider  
-from .manager import AIModelManager
+from .ai_model_manager import AIModelManager
 
 __all__ = [
     'LLMProvider',

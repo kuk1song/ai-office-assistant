@@ -7,6 +7,7 @@ from typing import List, Dict
 from .parser import DocumentParser
 from .tools import create_all_tools
 from .models import AIModelManager
+from .knowledge import KnowledgeBaseManager
 
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -58,11 +59,14 @@ class AgentEngine:
         # --- AI Model Management (New Architecture) ---
         self.ai_models = AIModelManager(api_key)
         
+        # --- Knowledge Base Management (New Architecture) ---
+        self.knowledge_base = KnowledgeBaseManager(self.ai_models)
+        
         # Core components (Backward Compatibility)
         self.llm = self.ai_models.get_llm_provider().get_llm()
         self.embeddings = self.ai_models.get_embedding_provider().get_embeddings()
         
-        # State variables
+        # State variables (Backward Compatibility - delegated to KnowledgeBaseManager)
         self.vectorstore: FAISS = None
         self.rag_chain = None
         self.agent_executor: AgentExecutor = None
@@ -169,6 +173,8 @@ class AgentEngine:
 
     def _build_rag_chain(self):
         """Builds the RAG chain from the current vectorstore."""
+        if not self.vectorstore:
+            return
         retriever = self.vectorstore.as_retriever(search_kwargs={"k": 8})
         qa_prompt = ChatPromptTemplate.from_template("""
 Answer the user's question based only on the following context:
@@ -181,227 +187,77 @@ Question: {input}
 
     def create_and_save(self, uploaded_files: List) -> List[str]:
         """Create knowledge base from uploaded files and save persistently."""
-        print("🔧 Creating knowledge base...")
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        failed_files = self.knowledge_base.create_knowledge_base(uploaded_files)
         
-        docs_for_rag = []
-        failed_files = []
+        # --- Update backward compatibility state variables ---
+        self._sync_state_from_knowledge_base()
         
-        for file in uploaded_files:
-            print(f"📄 Processing: {file.name}")
-            
-            # Save the uploaded file to a temporary location
-            with open(file.name, "wb") as f:
-                f.write(file.getvalue())
-            
-            # Parse the document
-            parsed_result = DocumentParser.parse_document(file.name)
-            
-            if "error" in parsed_result:
-                print(f"  ❌ Failed to parse {file.name}: {parsed_result['error']}")
-                failed_files.append(file.name)
-                os.remove(file.name)  # Clean up
-                continue
-            
-            text = parsed_result["content"]
-            
-            # Check if the text is actually valid content or OCR failure
-            if not text or text.startswith("=== Document contains only images with no readable text ==="):
-                print(f"  - {file.name} contains no readable text (may be image-only or OCR failed)")
-                failed_files.append(file.name)
-                os.remove(file.name)  # Clean up
-                continue
-            
-            print(f"  ✅ Extracted {len(text)} characters")
-            docs_for_rag.append((text, {"source": file.name}))
-            self.raw_texts[file.name] = text
-            os.remove(file.name)  # Clean up
-        
-        if not docs_for_rag:
-            raise ValueError("❌ No files could be processed successfully. Please check your file formats and content.")
-        
-        # Smart text splitting
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        
-        # Create valid chunks with filtering
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
-        # Create vector store
-        print("🔤 Creating embeddings...")
-        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
-        self.file_names = [file.name for file in uploaded_files if file.name not in failed_files]
-        
-        # Build chains and agents
+        # --- Build chains and agents (keep existing behavior) ---
         self._build_rag_chain()
         self._build_agent()
         
-        # Save everything
-        self.save()
-        
-        print(f"✅ Knowledge base created with {len(self.file_names)} documents!")
         return failed_files
+
+    def _sync_state_from_knowledge_base(self):
+        """Sync backward compatibility state variables from knowledge base manager."""
+        self.file_names = self.knowledge_base.get_file_names()
+        self.raw_texts = self.knowledge_base.get_all_raw_texts()
+        self.vectorstore = self.knowledge_base.vector_store_manager.get_vector_store()
 
     def add_documents(self, uploaded_files: List) -> List[str]:
         """Add new documents to existing knowledge base."""
-        print("🔧 Adding documents to existing knowledge base...")
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        failed_files = self.knowledge_base.add_documents(uploaded_files)
         
-        if not self.vectorstore:
-            raise ValueError("No existing knowledge base found. Please create one first.")
+        # --- Update backward compatibility state variables ---
+        self._sync_state_from_knowledge_base()
         
-        docs_for_rag = []
-        failed_files = []
-        new_file_names = []
-        
-        for file in uploaded_files:
-            if file.name in self.file_names:
-                print(f"  ⚠️ {file.name} already exists, skipping...")
-                continue
-                
-            print(f"📄 Processing: {file.name}")
-            
-            # Save the uploaded file to a temporary location
-            with open(file.name, "wb") as f:
-                f.write(file.getvalue())
-            
-            # Parse the document
-            parsed_result = DocumentParser.parse_document(file.name)
-            
-            if "error" in parsed_result:
-                print(f"  ❌ Failed to parse {file.name}: {parsed_result['error']}")
-                failed_files.append(file.name)
-                os.remove(file.name)  # Clean up
-                continue
-            
-            text = parsed_result["content"]
-            
-            # Check if the text is actually valid content or OCR failure  
-            if not text or text.startswith("=== Document contains only images with no readable text ==="):
-                print(f"  - {file.name} contains no readable text (may be image-only or OCR failed)")
-                failed_files.append(file.name)
-                os.remove(file.name)  # Clean up
-                continue
-            
-            print(f"  ✅ Extracted {len(text)} characters")
-            docs_for_rag.append((text, {"source": file.name}))
-            self.raw_texts[file.name] = text
-            new_file_names.append(file.name)
-            os.remove(file.name)  # Clean up
-        
-        if not docs_for_rag:
-            print("No new documents were processed.")
-            return failed_files
-        
-        # Smart text splitting for new documents
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        
-        # Create valid chunks for new documents
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
-        # Add to existing vector store
-        print("🔤 Adding new embeddings...")
-        self.vectorstore.add_documents(split_docs)
-        self.file_names.extend(new_file_names)
-        
-        # Rebuild chains and agents with updated file list
+        # --- Rebuild chains and agents (keep existing behavior) ---
         self._build_rag_chain()
         self._build_agent()
         
-        # Save everything
-        self.save()
-        
-        print(f"✅ Added {len(new_file_names)} new documents!")
         return failed_files
 
     def delete_document(self, file_name_to_delete: str):
         """Delete a specific document from the knowledge base."""
-        if file_name_to_delete not in self.file_names:
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        success = self.knowledge_base.delete_document(file_name_to_delete)
+        
+        if not success:
             raise ValueError(f"Document '{file_name_to_delete}' not found in knowledge base.")
         
-        print(f"🗑️ Deleting document: {file_name_to_delete}")
+        # --- Update backward compatibility state variables ---
+        self._sync_state_from_knowledge_base()
         
-        # Remove from file list and raw texts
-        self.file_names.remove(file_name_to_delete)
-        if file_name_to_delete in self.raw_texts:
-            del self.raw_texts[file_name_to_delete]
-        
-        # Check if any documents remain
-        if not self.file_names:
-            print("No documents remain. Clearing knowledge base...")
-            self.vectorstore = None
+        # --- Rebuild chains and agents (keep existing behavior) ---
+        if self.vectorstore:  # Only rebuild if there are still documents
+            self._build_rag_chain()
+            self._build_agent()
+        else:
+            # Clear chains if no documents remain
             self.rag_chain = None
             self.agent_executor = None
-            self.save()
-            return
-        
-        # Rebuild vector store without the deleted document
-        print("Rebuilding vector store without deleted document...")
-        docs_for_rag = [(self.raw_texts[name], {"source": name}) for name in self.file_names]
-        
-        # Smart text splitting
-        text_splitter = self._get_text_splitter(docs_for_rag)
-        
-        # Create valid chunks
-        split_docs = self._create_valid_chunks(text_splitter, docs_for_rag)
-        
-        # Recreate vector store
-        print("🔤 Recreating embeddings...")
-        self.vectorstore = FAISS.from_documents(split_docs, self.embeddings)
-        
-        # Rebuild chains and agents
-        self._build_rag_chain()
-        self._build_agent()
-        
-        # Save everything
-        self.save()
-        print(f"✅ Document '{file_name_to_delete}' deleted successfully!")
 
     def save(self):
         """Save the current state to persistent storage."""
-        if self.vectorstore:
-            self.vectorstore.save_local(FAISS_INDEX_PATH)
-        
-        # Save metadata
-        metadata = {
-            "file_names": self.file_names,
-            "raw_texts": self.raw_texts
-        }
-        with open(METADATA_PATH, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=2)
-        
-        print(f"💾 Saved to {STORAGE_DIR}")
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        self.knowledge_base.save_knowledge_base()
 
     def load(self) -> bool:
         """Load existing state from persistent storage. Returns True if successful."""
-        try:
-            if not os.path.exists(FAISS_INDEX_PATH) or not os.path.exists(METADATA_PATH):
-                return False
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        success = self.knowledge_base.load_knowledge_base()
+        
+        if success:
+            # --- Update backward compatibility state variables ---
+            self._sync_state_from_knowledge_base()
             
-            # Load metadata
-            with open(METADATA_PATH, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-            
-            self.file_names = metadata.get("file_names", [])
-            self.raw_texts = metadata.get("raw_texts", {})
-            
-            if not self.file_names:
-                return False
-            
-            # Load vector store
-            self.vectorstore = FAISS.load_local(
-                FAISS_INDEX_PATH, 
-                self.embeddings,
-                allow_dangerous_deserialization=True
-            )
-            
-            # Rebuild chains and agents
+            # --- Rebuild chains and agents (keep existing behavior) ---
             self._build_rag_chain()
             self._build_agent()
-            
-            print(f"📂 Loaded existing knowledge base with {len(self.file_names)} documents")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Failed to load existing knowledge base: {e}")
-            return False
+        
+        return success
 
     def invoke(self, query: str, chat_history: List = None) -> str:
         """Process a user query through the agent."""
@@ -419,16 +275,12 @@ Question: {input}
 
     def reset_storage(self):
         """Delete all persistent storage."""
-        if os.path.exists(STORAGE_DIR):
-            shutil.rmtree(STORAGE_DIR)
-            print(f"🗑️ Cleared storage directory: {STORAGE_DIR}")
+        # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        self.knowledge_base.clear_knowledge_base()
         
-        # Reset instance state
+        # --- Reset backward compatibility state variables ---
         self.vectorstore = None
         self.rag_chain = None
         self.agent_executor = None
         self.file_names = []
         self.raw_texts = {}
-        
-        # Recreate storage directory
-        os.makedirs(STORAGE_DIR, exist_ok=True)
