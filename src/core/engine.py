@@ -53,6 +53,10 @@ class DocumentInput(BaseModel):
 class TechSpecInput(DocumentInput):
     parameters_to_extract: List[str] = Field(description="A list of specific technical parameters to extract from the document.")
 
+class SummarizeInput(BaseModel):
+    file_name: str = Field(description="The exact file name of the document to summarize.")
+    language: str = Field(description="The language for the summary (e.g., 'English', '中文', 'italiano').", default="English")
+
 class LinkBudgetInput(BaseModel):
     distance_km: float = Field(description="The distance between the two sites in kilometers.")
     transmitter_power_dBm: float = Field(description="The output power of the transmitter in dBm.")
@@ -100,26 +104,39 @@ class AgentEngine:
             response = self.rag_chain.invoke({"input": query})
             return response.get("answer", "I could not find an answer in the documents.")
 
-        @tool(args_schema=DocumentInput)
+        @tool(args_schema=SummarizeInput)
         def summarize_document(file_name: str, language: str = "English") -> str:
             """
             Use this tool to generate a detailed summary of a SINGLE, SPECIFIC document in a specified language.
             The first input MUST be the exact file name.
             The second, optional input is the language for the summary (defaults to English).
             """
+            # Debug output to verify language parameter
+            print(f"[DEBUG] Summarize tool called with: file_name='{file_name}', language='{language}'")
+            
             if file_name not in self.raw_texts:
                 return f"Error: The file '{file_name}' was not found in the knowledge base. Please use one of the available files: {', '.join(self.file_names)}"
             
             text_to_summarize = self.raw_texts[file_name]
             
-            # Enhanced language-specific prompt
+            # Enhanced language-specific prompt with stronger enforcement
             language_instruction = f"""
-CRITICAL LANGUAGE REQUIREMENT: You MUST write the entire summary in {language}. 
-- If {language} is "中文" or "Chinese", write EVERYTHING in Chinese characters (中文).
-- If {language} is "English", write EVERYTHING in English.
-- Do NOT mix languages.
-- Do NOT provide translations or explanations in other languages.
-- The summary content, headers, and all text must be in {language}.
+ABSOLUTE CRITICAL LANGUAGE REQUIREMENT: 
+The user has specifically requested the summary in "{language}". You MUST strictly comply.
+
+LANGUAGE RULES:
+- If language is "中文", "Chinese", or "chinese": Write EVERYTHING in Chinese characters only (中文).
+- If language is "italiano", "Italian", or "italian": Write EVERYTHING in Italian only.
+- If language is "English" or "english": Write EVERYTHING in English only.
+- For any other language: Write EVERYTHING in that specified language only.
+
+STRICT PROHIBITIONS:
+- NEVER write in English if another language is requested
+- NEVER mix languages in the same response
+- NEVER provide translations or bilingual content
+- NEVER add English explanations after non-English content
+
+COMPLIANCE CHECK: Before responding, verify that your ENTIRE response is written in "{language}".
 """
             
             system_prompt = f"""You are a professional document summarization expert. {language_instruction}
@@ -130,9 +147,17 @@ Your task is to create a comprehensive yet concise summary of the provided docum
 3. Conclusions and findings
 4. Overall document purpose and context
 
-Remember: Write the ENTIRE response in {language} only."""
+FINAL REMINDER: Your response must be written entirely in "{language}". Do not write in any other language."""
             
-            human_prompt = f"Summarize this document in {language}:\n\nDocument: {file_name}\n\nContent:\n{text_to_summarize[:16000]}"
+            human_prompt = f"""Please summarize this document in {language} ONLY. 
+Do not use any other language in your response.
+
+Document: {file_name}
+
+Content:
+{text_to_summarize[:16000]}
+
+Remember: Respond entirely in {language}."""
             
             response = self.llm.invoke([
                 SystemMessage(content=system_prompt),
