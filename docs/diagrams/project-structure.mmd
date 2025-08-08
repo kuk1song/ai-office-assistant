@@ -1,0 +1,129 @@
+graph TB
+    subgraph "🏗️ AI Office Assistant - 最终优化项目结构"
+        subgraph SRC["📁 src/"]
+            subgraph CORE["🎯 core/"]
+                AGENT[📄 agent_system.py<br/>🤖 AI智能体系统<br/>统一引擎接口]
+                PARSER[📄 document_parser.py<br/>📄 文档解析器<br/>多格式处理+OCR]
+                SESSION[📄 session.py<br/>💾 会话管理器<br/>状态管理和生命周期]
+
+                subgraph MODELS["🤖 models/"]
+                    AIM[📄 ai_model_manager.py<br/>AI模型管理器]
+                    LLP[📄 llm_provider.py<br/>语言模型提供器]
+                    EMP[📄 embedding_provider.py<br/>嵌入模型提供器]
+                end
+
+                subgraph KNOWLEDGE["📚 knowledge/"]
+                    KBM[📄 knowledge_base_manager.py<br/>知识库管理器]
+                    DP[📄 document_processor.py<br/>文档处理器]
+                    VSM[📄 vector_store_manager.py<br/>向量存储管理器]
+                    PM[📄 persistence_manager.py<br/>持久化管理器]
+                end
+
+                subgraph ORCHESTRATION["⚡ orchestration/"]
+                    OM[📄 orchestration_manager.py<br/>编排管理器]
+                    RR[📄 rag_retriever.py<br/>RAG检索器]
+                    AE[📄 agent_executor.py<br/>Agent执行器]
+                    TR[📄 tool_registry.py<br/>工具注册表]
+                end
+
+                subgraph TOOLS["🔧 tools/"]
+                    subgraph KB_TOOLS["knowledge_base/"]
+                        QA[📄 knowledge_qa.py<br/>知识库问答]
+                    end
+                    subgraph DOC_TOOLS["document/"]
+                        SUM[📄 document_summarizer.py<br/>文档摘要器]
+                    end
+                    subgraph EXTRACTORS["extractors/"]
+                        SPEC[📄 technical_spec_extractor.py<br/>规格提取器]
+                    end
+                    subgraph CALC_TOOLS["calculators/"]
+                        LINK[📄 link_budget_calculator.py<br/>链路预算计算]
+                    end
+                end
+            end
+
+            subgraph UI["🖥️ ui/"]
+                subgraph COMPONENTS["components/"]
+                    KB[📄 knowledge_base.py<br/>知识库界面]
+                    UPLOAD[📄 upload.py<br/>上传界面]
+                    CHAT[📄 chat.py<br/>聊天界面]
+                end
+                MAIN[📄 main.py<br/>主界面]
+            end
+        end
+
+        subgraph DOCS["📚 docs/"]
+            PROJECT[📄 project-roadmap.md<br/>项目路线图]
+            TECH[📄 technical-architecture.md<br/>技术架构文档]
+            RESEARCH[📄 research-log.md<br/>研究日志]
+            BOOTSTRAP[📄 bootstrapping-prompt.md<br/>上下文工程]
+
+            subgraph ADR["📜 adr/"]
+                ADR1[📄 001-use-adr.md<br/>采用ADR]
+                ADR2[📄 002-kebab-case.md<br/>文件命名]
+                ADR3[📄 003-summarize-fix.md<br/>摘要修复]
+                ADR4[📄 004-tool-restructure.md<br/>工具重构]
+                ADR5[📄 005-kb-interface-fix.md<br/>接口修复]
+            end
+
+            subgraph TOOLS_DOC["🔧 tools/"]
+                TOOL1[📄 knowledge-base-qa.md<br/>知识库问答工具]
+                TOOL2[📄 document-summarizer.md<br/>文档摘要工具]
+                TOOL3[📄 technical-spec-extractor.md<br/>规格提取工具]
+                TOOL4[📄 link-budget-calculator.md<br/>链路预算工具]
+            end
+        end
+
+        subgraph CONFIG["⚙️ 配置文件"]
+            APP[📄 app.py<br/>应用入口]
+            REQ[📄 requirements.txt<br/>依赖清单]
+            README[📄 README.md<br/>项目说明]
+        end
+    end
+
+    subgraph NAMING["🏷️ 命名优化成果"]
+        OLD1[❌ engine.py<br/>模糊不清]
+        NEW1[✅ agent_system.py<br/>AI智能体系统]
+
+        OLD2[❌ parser.py<br/>解析什么？]
+        NEW2[✅ document_parser.py<br/>文档解析器]
+
+        OLD3[❌ conversation/]
+        NEW3[✅ orchestration/<br/>编排层]
+
+        OLD4[❌ technical/]
+        NEW4[✅ domain/<br/>领域工具]
+    end
+
+    %% 依赖关系
+    AGENT --> MODELS
+    AGENT --> KNOWLEDGE
+    AGENT --> ORCHESTRATION
+    ORCHESTRATION --> TOOLS
+    UI --> AGENT
+
+    %% 命名优化关系
+    OLD1 -.->|重命名| NEW1
+    OLD2 -.->|重命名| NEW2
+    OLD3 -.->|重命名| NEW3
+    OLD4 -.->|重命名| NEW4
+
+    %% 样式
+    style AGENT fill:#ff9999,stroke:#333,stroke-width:3px
+    style PARSER fill:#99ccff,stroke:#333,stroke-width:3px
+    style MODELS fill:#fff3e0
+    style KNOWLEDGE fill:#e8f5e8
+    style ORCHESTRATION fill:#e1f5fe
+    style TOOLS fill:#fff8e1
+    style UI fill:#f3e5f5
+    style DOCS fill:#fce4ec
+    style NAMING fill:#fff9c4,stroke:#f57c00,stroke-width:2px
+    style NEW1 fill:#c8e6c9
+    style NEW2 fill:#c8e6c9
+    style NEW3 fill:#c8e6c9
+    style NEW4 fill:#c8e6c9
+    style OLD1 fill:#ffcdd2
+    style OLD2 fill:#ffcdd2
+    style OLD3 fill:#ffcdd2
+    style OLD4 fill:#ffcdd2
+

@@ -13,9 +13,11 @@ temp_images/
 temp_uploads/
 temp_uploads_add/
 temp_uploads_create/
+var/tmp/
+var/tmp_images/
 
 # Persistent storage (local data)
-persistent_storage/
+var/persistent_storage/
 
 # Data files
 data/

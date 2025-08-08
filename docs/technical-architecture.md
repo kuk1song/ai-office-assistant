@@ -112,6 +112,14 @@ graph LR
     E --> F[系统就绪]
 ```
 
+> 兼容视图（PNG/SVG）：
+>
+> PNG: `docs/diagrams/img/technical-architecture-1.png`
+>
+> PNG: `docs/diagrams/img/technical-architecture-2.png`
+>
+> PNG: `docs/diagrams/img/technical-architecture-3.png`
+
 ### 用户查询处理流程
 
 ```mermaid
@@ -134,6 +142,14 @@ sequenceDiagram
     O-->>E: 返回最终答案
     E-->>U: 返回智能回答
 ```
+
+> 兼容视图（PNG/SVG）：
+>
+> PNG: `docs/diagrams/img/technical-architecture-1.png`
+>
+> PNG: `docs/diagrams/img/technical-architecture-2.png`
+>
+> PNG: `docs/diagrams/img/technical-architecture-3.png`
 
 ---
 
@@ -301,6 +317,7 @@ graph TB
 ## 📚 相关文档
 
 - 📋 [项目路线图](./project-roadmap.md)
+- 🧠 [架构重构计划](./architecture-refactoring-plan.md)
 - 📖 [研究日志](./research-log.md)
 - 🔧 [工具文档](./tools/)
 - 📜 [架构决策记录](./adr/)

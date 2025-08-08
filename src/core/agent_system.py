@@ -20,7 +20,11 @@ from langchain.agents import AgentExecutor, create_openai_tools_agent
 import shutil
 
 # --- STORAGE CONFIGURATION ---
-STORAGE_DIR = "persistent_storage"
+# Absolute path to the project root, ensuring that paths are always correct
+# regardless of the script's execution directory.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# New standard location for variable data, following professional practices.
+STORAGE_DIR = os.path.join(PROJECT_ROOT, "var", "persistent_storage")
 FAISS_INDEX_PATH = os.path.join(STORAGE_DIR, "vector_store")
 METADATA_PATH = os.path.join(STORAGE_DIR, "metadata.json")
 
@@ -149,6 +153,8 @@ class AgentEngine:
     def save(self):
         """Save the current state to persistent storage."""
         # --- Delegate to new Knowledge Base Manager (New Architecture) ---
+        # Ensure new storage directory exists
+        os.makedirs(STORAGE_DIR, exist_ok=True)
         self.knowledge_base.save_knowledge_base()
 
     def load(self) -> bool:
