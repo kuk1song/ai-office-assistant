@@ -8,6 +8,7 @@ from .parser import DocumentParser
 from .tools import create_all_tools
 from .models import AIModelManager
 from .knowledge import KnowledgeBaseManager
+from .conversation import ConversationOrchestrator
 
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -62,6 +63,9 @@ class AgentEngine:
         # --- Knowledge Base Management (New Architecture) ---
         self.knowledge_base = KnowledgeBaseManager(self.ai_models)
         
+        # --- Conversation Orchestration (New Architecture) ---
+        self.conversation = ConversationOrchestrator(self.ai_models, self.knowledge_base)
+        
         # Core components (Backward Compatibility)
         self.llm = self.ai_models.get_llm_provider().get_llm()
         self.embeddings = self.ai_models.get_embedding_provider().get_embeddings()
@@ -76,11 +80,11 @@ class AgentEngine:
         # Ensure storage directory exists
         os.makedirs(STORAGE_DIR, exist_ok=True)
         
-        # --- Initialize Tools ---
+        # --- Initialize Tools (Backward Compatibility) ---
         self.tools = create_all_tools(self)
         
-        # Expose summary tool for direct calls from UI
-        self.summarize_document = self.tools[1]  # summarize_document is the second tool
+        # Expose summary tool for direct calls from UI (Backward Compatibility)
+        self.summarize_document = self.tools[1] if len(self.tools) > 1 else None
 
     def _get_text_splitter(self, docs_for_rag: List = None):
         """
@@ -193,6 +197,9 @@ Question: {input}
         # --- Update backward compatibility state variables ---
         self._sync_state_from_knowledge_base()
         
+        # --- Initialize conversation orchestrator (New Architecture) ---
+        self.conversation.initialize(self)
+        
         # --- Build chains and agents (keep existing behavior) ---
         self._build_rag_chain()
         self._build_agent()
@@ -213,6 +220,9 @@ Question: {input}
         # --- Update backward compatibility state variables ---
         self._sync_state_from_knowledge_base()
         
+        # --- Refresh conversation orchestrator (New Architecture) ---
+        self.conversation.refresh_components()
+        
         # --- Rebuild chains and agents (keep existing behavior) ---
         self._build_rag_chain()
         self._build_agent()
@@ -229,6 +239,10 @@ Question: {input}
         
         # --- Update backward compatibility state variables ---
         self._sync_state_from_knowledge_base()
+        
+        # --- Refresh conversation orchestrator (New Architecture) ---
+        if self.vectorstore:  # Only rebuild if there are still documents
+            self.conversation.refresh_components()
         
         # --- Rebuild chains and agents (keep existing behavior) ---
         if self.vectorstore:  # Only rebuild if there are still documents
@@ -253,14 +267,33 @@ Question: {input}
             # --- Update backward compatibility state variables ---
             self._sync_state_from_knowledge_base()
             
+            # --- Initialize conversation orchestrator (New Architecture) ---
+            self.conversation.initialize(self)
+            
             # --- Rebuild chains and agents (keep existing behavior) ---
             self._build_rag_chain()
             self._build_agent()
         
         return success
 
+    def get_summarize_tool(self):
+        """Get the summarize tool for direct UI access."""
+        # --- Try new architecture first ---
+        if self.conversation and self.conversation.is_ready():
+            exposed_tools = self.conversation.get_exposed_tools()
+            if "summarize_document" in exposed_tools:
+                return exposed_tools["summarize_document"]["tool"]
+        
+        # --- Fallback to old architecture (Backward Compatibility) ---
+        return self.summarize_document
+
     def invoke(self, query: str, chat_history: List = None) -> str:
         """Process a user query through the agent."""
+        # --- Use new Conversation Orchestrator (New Architecture) ---
+        if self.conversation and self.conversation.is_ready():
+            return self.conversation.process_query(query, chat_history)
+        
+        # --- Fallback to old behavior (Backward Compatibility) ---
         if not self.agent_executor:
             return "❌ Knowledge base not initialized. Please upload documents first."
         
