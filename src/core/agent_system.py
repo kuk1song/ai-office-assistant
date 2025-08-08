@@ -65,7 +65,8 @@ class AgentEngine:
         self.ai_models = AIModelManager(api_key)
         
         # --- Knowledge Base Management (New Architecture) ---
-        self.knowledge_base = KnowledgeBaseManager(self.ai_models)
+        # Pass absolute storage directory to avoid accidental root-level paths
+        self.knowledge_base = KnowledgeBaseManager(self.ai_models, STORAGE_DIR)
         
         # --- AI Orchestration (New Architecture) ---
         self.orchestration = OrchestrationManager(self.ai_models, self.knowledge_base)

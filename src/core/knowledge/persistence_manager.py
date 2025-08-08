@@ -23,7 +23,7 @@ class PersistenceManager:
     and other knowledge base state to ensure data persistence across sessions.
     """
     
-    def __init__(self, storage_dir: str = "persistent_storage"):
+    def __init__(self, storage_dir: str):
         """
         Initialize the persistence manager.
         
@@ -34,8 +34,8 @@ class PersistenceManager:
         self.faiss_index_path = os.path.join(storage_dir, "vector_store")
         self.metadata_path = os.path.join(storage_dir, "metadata.json")
         
-        # Ensure storage directory exists
-        os.makedirs(storage_dir, exist_ok=True)
+        # Ensure storage directory exists (absolute path expected)
+        os.makedirs(self.storage_dir, exist_ok=True)
     
     def save_knowledge_base(self, vector_store: FAISS, file_names: List[str], 
                           raw_texts: Dict[str, str]) -> None:

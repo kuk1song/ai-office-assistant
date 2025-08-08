@@ -23,7 +23,7 @@ class KnowledgeBaseManager:
     and persistence components.
     """
     
-    def __init__(self, ai_model_manager, storage_dir: str = "persistent_storage"):
+    def __init__(self, ai_model_manager, storage_dir: str):
         """
         Initialize the knowledge base manager.
         
