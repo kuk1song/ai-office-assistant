@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, List
 
 from .knowledge_base.qa import create_knowledge_base_qa_tool
 from .document.summarizer import create_summarize_document_tool
-from .technical.spec_extractor import create_tech_spec_extractor_tool
+from .domain.spec_extractor import create_tech_spec_extractor_tool
 from .calculations.link_budget import calculate_link_budget
 
 if TYPE_CHECKING:
-    from ..engine import AgentEngine
+    from ..agent_system import AgentEngine
 
 
 def create_all_tools(engine: "AgentEngine") -> List:

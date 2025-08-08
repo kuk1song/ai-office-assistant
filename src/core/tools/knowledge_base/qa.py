@@ -7,7 +7,7 @@ from langchain.tools import tool
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...engine import AgentEngine
+    from ...agent_system import AgentEngine
 
 
 def create_knowledge_base_qa_tool(engine: "AgentEngine"):

@@ -1,21 +1,21 @@
 """
-Conversation Orchestration Package
+Orchestration Package
 
-This package provides centralized management for conversation operations:
+This package provides centralized management for AI orchestration operations:
 - RAG Retriever: Retrieval-Augmented Generation query processing
 - Agent Executor: AI agent execution and tool orchestration  
 - Tool Registry: Tool registration and management
-- Conversation Orchestrator: Unified conversation lifecycle management
+- Orchestration Manager: Unified AI orchestration lifecycle management
 """
 
 from .rag_retriever import RAGRetriever
 from .agent_executor import AgentExecutor
 from .tool_registry import ToolRegistry
-from .conversation_orchestrator import ConversationOrchestrator
+from .orchestration_manager import OrchestrationManager
 
 __all__ = [
     'RAGRetriever',
     'AgentExecutor', 
     'ToolRegistry',
-    'ConversationOrchestrator'
+    'OrchestrationManager'
 ]

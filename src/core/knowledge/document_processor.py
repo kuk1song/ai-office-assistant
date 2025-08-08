@@ -9,7 +9,7 @@ Responsible for:
 """
 
 from typing import List, Tuple, Dict, Any
-from ..parser import DocumentParser
+from ..document_parser import DocumentParser
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 

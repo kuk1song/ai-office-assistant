@@ -10,7 +10,7 @@ from pydantic.v1 import BaseModel, Field
 from typing import List, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...engine import AgentEngine
+    from ...agent_system import AgentEngine
 
 
 class DocumentInput(BaseModel):

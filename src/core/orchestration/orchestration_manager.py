@@ -1,11 +1,11 @@
 """
-Conversation Orchestrator - Unified Conversation Lifecycle Management
+Orchestration Manager - Unified AI Orchestration Lifecycle Management
 
 Responsible for:
-- Orchestrating all conversation components (RAG, Agent, Tools)
-- Managing conversation flow and context
-- Coordinating between different conversation modes
-- Providing unified API for conversation operations
+- Orchestrating all AI components (RAG, Agent, Tools)
+- Managing interaction flow and context
+- Coordinating between different processing modes
+- Providing unified API for AI orchestration operations
 """
 
 from typing import List, Dict, Optional, Any
@@ -14,18 +14,18 @@ from .agent_executor import AgentExecutor
 from .tool_registry import ToolRegistry
 
 
-class ConversationOrchestrator:
+class OrchestrationManager:
     """
-    Unified orchestrator for all conversation operations.
+    Unified manager for all AI orchestration operations.
     
-    This class provides a single point of access for all conversation
+    This class provides a single point of access for all AI processing
     functionality and coordinates between RAG retrieval, agent execution,
     and tool management components.
     """
     
     def __init__(self, ai_model_manager, knowledge_base_manager):
         """
-        Initialize the conversation orchestrator.
+        Initialize the orchestration manager.
         
         Args:
             ai_model_manager: AI model manager for LLM operations
@@ -54,7 +54,7 @@ class ConversationOrchestrator:
             True if initialization was successful
         """
         try:
-            print("🚀 Initializing conversation orchestrator...")
+            print("🚀 Initializing orchestration manager...")
             
             # Initialize tool registry first
             self.tool_registry.initialize_tools(engine_instance)
@@ -76,34 +76,34 @@ class ConversationOrchestrator:
                 return False
             
             self._is_initialized = True
-            print("✅ Conversation orchestrator initialized successfully")
+            print("✅ Orchestration manager initialized successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Error initializing conversation orchestrator: {str(e)}")
+            print(f"❌ Error initializing orchestration manager: {str(e)}")
             return False
     
     def process_query(self, query: str, chat_history: List = None, 
                      mode: str = None) -> str:
         """
-        Process a user query through the conversation system.
+        Process a user query through the orchestration system.
         
         Args:
             query: User query to process
             chat_history: Optional chat history for context
-            mode: Optional conversation mode ("agent" or "rag")
+            mode: Optional processing mode ("agent" or "rag")
             
         Returns:
             Processed response string
         """
         if not self._is_initialized:
-            return "❌ Conversation system not initialized. Please check configuration."
+            return "❌ Orchestration system not initialized. Please check configuration."
         
-        # Determine conversation mode
-        conversation_mode = mode or self._conversation_mode
+        # Determine processing mode
+        processing_mode = mode or self._conversation_mode
         
         try:
-            if conversation_mode == "rag":
+            if processing_mode == "rag":
                 # Use RAG-only mode for direct knowledge retrieval
                 return self._process_rag_query(query, chat_history)
             else:
@@ -111,7 +111,7 @@ class ConversationOrchestrator:
                 return self._process_agent_query(query, chat_history)
                 
         except Exception as e:
-            print(f"❌ Error processing query in {conversation_mode} mode: {str(e)}")
+            print(f"❌ Error processing query in {processing_mode} mode: {str(e)}")
             return f"❌ Error processing query: {str(e)}"
     
     def _process_rag_query(self, query: str, chat_history: List = None) -> str:

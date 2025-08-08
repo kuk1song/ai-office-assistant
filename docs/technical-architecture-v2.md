@@ -301,6 +301,7 @@ graph TB
 ## 📚 相关文档
 
 - 📋 [项目路线图](./project-roadmap.md)
+- 🧠 [架构重构计划](./architecture-refactoring-plan.md)
 - 📖 [研究日志](./research-log.md)
 - 🔧 [工具文档](./tools/)
 - 📜 [架构决策记录](./adr/)
