@@ -52,3 +52,7 @@ Open the app → upload documents → create the knowledge base → chat.
 ## 🔒 Use & Risk Notice
 - Provided as-is for learning and internal evaluation only
 - Review security, privacy, and compliance before real-world use
+
+## License
+
+This project is licensed under the Apache License 2.0. See the `LICENSE` file for details.
